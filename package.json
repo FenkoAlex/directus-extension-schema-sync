@@ -1,6 +1,6 @@
 {
-	"name": "directus-extension-nine",
-	"description": "Please enter a description for your extension",
+	"name": "@farawaygg/directus-extension-schema-export",
+	"description": "export schema to other directus env",
 	"icon": "extension",
 	"version": "1.0.0",
 	"keywords": [
@@ -11,7 +11,7 @@
 	"directus:extension": {
 		"type": "module",
 		"path": "dist/index.js",
-		"source": "src/index.js",
+		"source": "src/index.ts",
 		"host": "^9.26.0"
 	},
 	"scripts": {
