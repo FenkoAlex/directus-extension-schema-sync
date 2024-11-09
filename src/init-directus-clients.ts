@@ -3,48 +3,51 @@ import {
   rest,
   authentication,
 } from "@directus/sdk";
-import { useStores } from "@directus/extensions-sdk";
+import { useStores, useItems } from "@directus/extensions-sdk";
+import { ref } from "vue";
 
-// TODO: change to DB request
-const envConfig = {
-  stageDirectus: {
-    name: "Stage Directus 1",
-    url: "http://0.0.0.0:8055",
-    login: "admin@example.com",
-    password: "testTest",
-  },
-  prodDirectus: {
-    name: "Prod Directus 2",
-    url: "http://0.0.0.0:8056",
-    login: "admin@example.com",
-    password: "testTest",
-  },
-};
+const dirOrder = ['stage', 'prod'] as const;
 
 export const initDirectusClients = async () => {
   const {
     useNotificationsStore,
   } = useStores();
+
+  const envResult = useItems(ref("export_tools"), {
+    limit: ref(-1),
+    fields: ref(["*"]),
+    filter: ref(null),
+  });
+  await envResult.getItems();
+
+  const envConfig = envResult.items.value.reduce((acc, val) => {
+    acc[val.type] = {
+      ...val,
+    }
+
+    return acc;
+  }, {});
+
   const notificationsStore = useNotificationsStore();
 
   let clientA;
   let clientB;
 
   try {
-    clientA = createDirectus(envConfig.stageDirectus.url)
+    clientA = createDirectus(envConfig[dirOrder[0]].url)
       .with(authentication())
       .with(rest());
     await clientA.login(
-      envConfig.stageDirectus.login,
-      envConfig.stageDirectus.password
+      envConfig[dirOrder[0]].login,
+      envConfig[dirOrder[0]].password
     );
 
-    clientB = createDirectus(envConfig.prodDirectus.url)
+    clientB = createDirectus(envConfig[dirOrder[1]].url)
       .with(authentication())
       .with(rest());
     await clientB.login(
-      envConfig.prodDirectus.login,
-      envConfig.prodDirectus.password
+      envConfig[dirOrder[1]].login,
+      envConfig[dirOrder[1]].password
     );
   } catch (e: any) {
     console.error(e);
