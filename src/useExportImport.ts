@@ -21,6 +21,7 @@ export const useExportImport = () => {
       access_token: (
         api.defaults.headers.common["Authorization"] as string
       ).substring(7),
+      limit: -1,
       export: "json",
     };
 
@@ -36,16 +37,10 @@ export const useExportImport = () => {
       params,
     });
 
-    const dataBlob = await fetch(exportUrl).then((data) => data.blob());
-    const file = new File([dataBlob], collectionName, {
-      type: 'application/json',
-    });
-
-    return file;
+    return await fetch(exportUrl).then((data) => data.json());
   };
 
   const uploadFile = async (collectionName: string, file: File, remoteClient: any) => {
-    console.log(remoteClient);
     uploading.value = true;
     importing.value = false;
 
@@ -53,19 +48,7 @@ export const useExportImport = () => {
     formData.append('file', file);
 
     try {
-      const importRequest = await remoteClient.request(utilsImport(collectionName, formData));
-
-      notificationsStore.add({
-        title: `Data successfully imported from ${file.name}`,
-      });
-    } catch (err: any) {
-      console.error(err);
-      const code = err?.response?.data?.errors?.[0]?.extensions?.code;
-
-      notificationsStore.add({
-        title: code,
-        type: 'error',
-      });
+      await remoteClient.request(utilsImport(collectionName, formData));
     } finally {
       uploading.value = false;
       importing.value = false;

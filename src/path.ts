@@ -10,4 +10,9 @@ export const nav = {
     name: 'Items transfer',
     url: root + '/item-transfer',
   },
+  'universal-item-transfer': {
+    id: 'universal-item-transfer',
+    name: 'Universal items transfer',
+    url: root + '/universal-item-transfer',
+  },
 };

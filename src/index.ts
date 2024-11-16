@@ -1,6 +1,7 @@
 import { defineModule } from '@directus/extensions-sdk';
-import ModuleComponent from './module.vue';
+import SchemaTransferComponent from './schema-transfer.vue';
 import ItemTransferComponent from './items-transfer.vue';
+import UniversalItemTransferComponent from './universal-items-transfer.vue';
 
 export default defineModule({
 	id: 'schema-export',
@@ -10,12 +11,17 @@ export default defineModule({
 		{
 			id: 'schema-export/main',
 			path: '',
-			component: ModuleComponent,
+			component: SchemaTransferComponent,
 		},
 		{
 			id: 'schema-export/item-transfer',
 			path: 'item-transfer',
 			component: ItemTransferComponent,
+		},
+		{
+			id: 'schema-export/universal-item-transfer',
+			path: 'universal-item-transfer',
+			component: UniversalItemTransferComponent,
 		},
 	],
 	preRegisterCheck(user) {
