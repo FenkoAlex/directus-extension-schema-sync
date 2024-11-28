@@ -7,7 +7,8 @@ import {
   schemaApply,
   SchemaSnapshotOutput,
   readActivities,
-  clearCache,
+  deleteItem,
+  deleteItems as deleteItemsSdk,
 } from "@directus/sdk";
 import { useStores } from "@directus/extensions-sdk";
 import { sortBy, uniqBy } from "lodash";
@@ -25,7 +26,7 @@ import {
   createLogMessage,
   logMessageTypes,
 } from "./utils";
-import { COLLECTION_HEADER } from "./const";
+import { COLLECTION_HEADER, LAST_SYNC_HEADER } from "./const";
 
 import type {
   Collection,
@@ -54,8 +55,8 @@ const collectionsMap = ref<any>(null);
 const fieldsMap = ref<any>(null);
 const relationsMap = ref<any>(null);
 
-const activities = ref<ActivitiesMap | null>(null);
-const activitiesDeletedItems = ref<ActivitiesMap | null>(null);
+const activities = ref<ActivitiesMap>(new Map());
+const activitiesDeletedItems = ref<ActivitiesMap>(new Map());
 
 const search = ref<string | null>(null);
 const collectionsSorted = computed(() => {
@@ -86,12 +87,13 @@ const collectionsSorted = computed(() => {
 const selected = ref<Collection[]>([]);
 const collectionForConfirm = ref<Collection[]>([]);
 watch(selected, (collections) => {
+  console.log("selected watcher", selected.value);
   if (step.value === 0) {
     collectionForConfirm.value = collections;
   }
 });
 
-const { uploadFile, exportData } = useExportImport();
+const { uploadFile, exportData, updateSyncDate } = useExportImport();
 
 const init = async () => {
   const [client1, client2] = await initDirectusClients();
@@ -113,6 +115,7 @@ const init = async () => {
   }
 
   userCollections.value = collections.userCollections;
+  console.log("userCollections: ", userCollections.value);
   systemCollections.value = collections.systemCollections;
 
   collectionsMap.value = recordFromCollectionabl(
@@ -120,10 +123,13 @@ const init = async () => {
   );
   fieldsMap.value = mapFromCollectionabl(schema.value!.fields as any);
   relationsMap.value = mapFromCollectionabl(schema.value!.relations as any);
+  console.log("collectionsMap:", collectionsMap.value);
+  console.log("fieldsMap:", fieldsMap.value);
+  console.log("relationsMap:", relationsMap.value);
 
   const rawRemoteCollections = await client2.request(readCollections());
   const remoteCollections = splitCollections(rawRemoteCollections);
-  let date = new Date("2023-11-21");
+  let date = new Date();
   for (let element of remoteCollections.userCollections) {
     if (element.meta.imported_at) {
       if (collectionsMap.value[element.collection]) {
@@ -132,16 +138,16 @@ const init = async () => {
           last_sync_date: element.meta.imported_at,
         };
       }
-      // if (new Date(element.meta.imported_at) < date) {
-      //   syncedCollection += " " + element.collection;
-      //   date = new Date(element.meta.imported_at);
-      // }
+      if (new Date(element.meta.imported_at) < date) {
+        date = new Date(element.meta.imported_at);
+      }
     }
   }
   console.log("date for sorting", date);
 
-  const getFilter = (actions: string[]) => ({
-    limit: 10000,
+  const getFilter = (actions: string[], page: number = 1) => ({
+    limit: 2000,
+    page,
     filter: {
       action: {
         _in: actions,
@@ -152,13 +158,36 @@ const init = async () => {
     } as any,
   });
 
-  activitiesDeletedItems.value = proceccActivities(
-    await client1.request(readActivities(getFilter(["delete"])))
-  );
+  let i = 1;
 
-  activities.value = proceccActivities(
-    await client1.request(readActivities(getFilter(["create", "update"])))
+  let deletedActivities = await client1.request(
+    readActivities(getFilter(["delete"]))
   );
+  while (deletedActivities.length) {
+    activitiesDeletedItems.value = proceccActivities(
+      deletedActivities,
+      activitiesDeletedItems.value
+    );
+    i++;
+    deletedActivities = await client1.request(
+      readActivities(getFilter(["delete"], i))
+    );
+  }
+  i = 1;
+
+  let activitiesResponse = await client1.request(
+    readActivities(getFilter(["create", "update", "delete"]))
+  );
+  while (activitiesResponse.length) {
+    activities.value = proceccActivities(activitiesResponse, activities.value);
+    i++;
+    activitiesResponse = await client1.request(
+      readActivities(getFilter(["create", "update", "delete"], i))
+    );
+  }
+
+  console.log("activities.value:", activities.value);
+  console.log("activitiesDeletedItems.value:", activitiesDeletedItems.value);
 
   loading.value = false;
   tableLoading.value = false;
@@ -168,24 +197,45 @@ onMounted(() => {
   init();
 });
 
-function proceccActivities(activities: Activity[]) {
-  const result = new Map();
-
-  for (let element of activities) {
-    const tmpMap = new Map(result.get(element.collection) || []);
+function proceccActivities(newActivities: Activity[], activities = new Map()) {
+  for (let element of newActivities) {
+    const tmpMap = new Map(activities.get(element.collection) || []);
     tmpMap.set(element.item, {
       ...(tmpMap.get(element.item) || {}),
       [element.timestamp]: element,
     });
-    result.set(element.collection, tmpMap);
+    activities.set(element.collection, tmpMap);
   }
 
-  return result;
+  return activities;
 }
 
-async function uploadItem(collectionName: string, data: JSON) {
+async function uploadItems(collectionName: string, data: JSON) {
   const file = createJsonFile(data, collectionName);
   await uploadFile(collectionName, file, clientB.value);
+}
+
+async function deleteItems(collectionName: string) {
+  if (!activitiesDeletedItems.value.has(collectionName)) return;
+  const deletedItems = activitiesDeletedItems.value.get(collectionName)!;
+  const allItems = activities.value.get(collectionName)!;
+  const arrToDelete: string[] = [];
+  for (let key of deletedItems.keys()) {
+    if (allItems.has(key)) {
+      const deleteActions = deletedItems.get(key)!;
+      const deleteActionsDate = Object.keys(deleteActions);
+      const deletionDate = deleteActionsDate[deleteActionsDate.length - 1];
+      const actionsDate = Object.keys(allItems.get(key)!);
+      if (actionsDate[actionsDate.length - 1] === deletionDate) {
+        arrToDelete.push(key);
+      }
+    }
+  }
+
+  console.log("arrToDelete", arrToDelete);
+
+  //@ts-ignore
+  await clientB.value.request(deleteItemsSdk(collectionName, arrToDelete));
 }
 
 const handleExportClick = ref(async () => {
@@ -214,7 +264,9 @@ const handleExportClick = ref(async () => {
   for (let [collectionName, data] of dataMap.entries()) {
     try {
       console.log("data.secure", data.secure);
-      await uploadItem(collectionName, data.secure);
+      await uploadItems(collectionName, data.secure);
+      await deleteItems(collectionName);
+      await updateSyncDate(collectionName, clientB.value);
     } catch (e) {
       failedCollections.set(collectionName, false);
       textLog.push(
@@ -240,8 +292,12 @@ const handleExportClick = ref(async () => {
 function updateModelValue(newValue) {
   const selectableTable =
     step.value === 0 ? collectionsSorted.value : collectionForConfirm.value;
-  if (newValue.length === 0 || newValue.length === selectableTable.length) {
+  if (newValue.length === 0) {
     selected.value = newValue;
+  } else if (newValue.length === selectableTable.length) {
+    for (let element of newValue) {
+      selectCollection(element);
+    }
   }
 }
 
@@ -259,6 +315,7 @@ function getExcludedFieldsFromConfig(
     }
   });
 
+  console.log("getExcludedFieldsFromConfig", fieldsMap);
   return fieldsMap;
 }
 
@@ -282,10 +339,13 @@ function selectCollection(item: Collection) {
       }
     }
   }
+  console.log("relatedCollections", relatedCollections);
+  console.log("selected.value before", selected.value);
   selected.value = uniqBy(
     [...selected.value, ...relatedCollections, item],
     "collection"
   );
+  console.log("selected.value after", selected.value);
 }
 
 function handleItemSelect(event: { value: boolean; item: Collection }) {
@@ -312,8 +372,14 @@ function getRelatedCollection(collectionName: string) {
         collections.push(collectionsMap.value[item.collection]);
     });
 
+    console.log("getRelatedCollection: ", collectionName, collection);
     return collections;
   }
+  console.log(
+    "no collectionsMap.value: ",
+    collectionName,
+    collectionsMap.value
+  );
 
   return [];
 }
@@ -321,6 +387,7 @@ function getRelatedCollection(collectionName: string) {
 function handleTransferClick() {
   step.value = 1;
   console.log("selected.value", selected.value);
+  console.log("collectionForConfirm.value", collectionForConfirm.value);
 }
 function handleReturnToSelectionClick() {
   step.value = 0;
@@ -417,7 +484,7 @@ function handleSelectChangedCollectionsClick() {
         <h1 v-if="step === 1">Confirm collections</h1>
         <VTable
           :showSelect="'multiple'"
-          :headers="COLLECTION_HEADER"
+          :headers="[...COLLECTION_HEADER, LAST_SYNC_HEADER]"
           :items="step === 0 ? collectionsSorted : collectionForConfirm"
           :itemKey="'collection'"
           :modelValue="selected"

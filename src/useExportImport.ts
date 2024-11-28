@@ -2,7 +2,7 @@ import { ref } from "vue";
 import { useStores, useApi } from "@directus/extensions-sdk";
 import { getEndpoint } from "@directus/utils";
 import { getPublicURL } from "./utils";
-import { utilsImport } from "@directus/sdk";
+import { utilsImport, updateCollection } from "@directus/sdk";
 
 export const useExportImport = () => {
   const api = useApi();
@@ -55,5 +55,14 @@ export const useExportImport = () => {
     }
   };
 
-  return { uploading, importing, uploadFile, exportData };
+  const updateSyncDate = async (collectionName: string, remoteClient: any) => {
+    const collectionObject = {
+      meta: {
+        imported_at: new Date(),
+      },
+    };
+    await remoteClient.request(updateCollection(collectionName, collectionObject as any));
+  };
+
+  return { uploading, importing, uploadFile, exportData, updateSyncDate };
 };

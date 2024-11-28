@@ -4,5 +4,5 @@ export const COLLECTION_HEADER = [
     text: "Collection",
     value: "collection",
   },
-  { text: "Last sync date", value: "last_sync_date" },
 ];
+export const LAST_SYNC_HEADER = { text: "Last sync date", value: "last_sync_date" };
