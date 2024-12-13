@@ -36,13 +36,13 @@
   dependencies:
     regenerator-runtime "^0.14.0"
 
-"@directus/composables@10.1.5":
-  version "10.1.5"
-  resolved "https://registry.yarnpkg.com/@directus/composables/-/composables-10.1.5.tgz#66cf5eeaaa2a2bbb0368bba5c2a18061e1c21799"
-  integrity sha512-CZS11wBKXUQgYdbkvg9liy9kNdXU8/dUXyMu955NfdmxjqtSEiuzUGw57h85FfXckRenQWNtGyO0TqAlJJbvVw==
+"@directus/composables@10.1.6":
+  version "10.1.6"
+  resolved "https://registry.yarnpkg.com/@directus/composables/-/composables-10.1.6.tgz#32c3c542d4d76e32c854fd85749079fd0a6fe38a"
+  integrity sha512-RuhiLSidCD/SoTCxVU7td4geQEojajBUemCbHi0zxmWU23pNG9R1Vxiv8ksVK+PMLmnyx0GRLtBlTVkNStr0eA==
   dependencies:
     "@directus/constants" "11.0.1"
-    "@directus/utils" "11.0.1"
+    "@directus/utils" "11.0.2"
     axios "1.4.0"
     lodash-es "4.17.21"
     nanoid "4.0.2"
@@ -54,16 +54,16 @@
   dependencies:
     zod "3.22.4"
 
-"@directus/extensions-sdk@^10.1.14":
-  version "10.1.14"
-  resolved "https://registry.yarnpkg.com/@directus/extensions-sdk/-/extensions-sdk-10.1.14.tgz#be4293ce5c36492cd368991300f9e42437e6da14"
-  integrity sha512-Ls/fOP5AwmWkNhAlA7gFiBUn5iAVIzrithDXS/beHRJ/B2wv3cjEyY7NJic8M1xYZSCVGDWTakjUE7GUhmXHtw==
+"@directus/extensions-sdk@^10.2.0":
+  version "10.2.0"
+  resolved "https://registry.yarnpkg.com/@directus/extensions-sdk/-/extensions-sdk-10.2.0.tgz#97efd4bca759879c7e552601221cf499531ed26a"
+  integrity sha512-4barSzaQskAOig/D3J7N4XmT8heZVa6exBRUeWS2fPClIVWcTERz9Ih6gzrg9g4JBms8H0Pj7tcE+0fbynLwlA==
   dependencies:
-    "@directus/composables" "10.1.5"
+    "@directus/composables" "10.1.6"
     "@directus/constants" "11.0.1"
-    "@directus/extensions" "0.1.1"
-    "@directus/types" "11.0.1"
-    "@directus/utils" "11.0.1"
+    "@directus/extensions" "0.2.0"
+    "@directus/types" "11.0.2"
+    "@directus/utils" "11.0.2"
     "@rollup/plugin-commonjs" "25.0.0"
     "@rollup/plugin-json" "6.0.0"
     "@rollup/plugin-node-resolve" "15.0.2"
@@ -84,12 +84,12 @@
     vite "4.3.7"
     vue "3.3.4"
 
-"@directus/extensions@0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@directus/extensions/-/extensions-0.1.1.tgz#e3ebe94da61e24e56fd7f095a724547d48ff7053"
-  integrity sha512-KgK339hToOg2tVhATejA5+Yymx8WDRLROda/05JowbT91OOFo81F8tRsK6b1OIfHoEyXO4UZpecE24r+3piPoA==
+"@directus/extensions@0.2.0":
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/@directus/extensions/-/extensions-0.2.0.tgz#295fa68c02bc98a9e1fac1e845b5ffc9e251733a"
+  integrity sha512-F5YCqF1i+FJMLdC6Do6gBndMnx4pvQFTFSDxO20kmkTBsL0mKt5CsaIN68l3mu0odOPJK23k7uQMPTVa68hbJQ==
   dependencies:
-    "@directus/utils" "11.0.1"
+    "@directus/utils" "11.0.2"
     fs-extra "11.1.1"
     lodash-es "4.17.21"
     tmp "0.2.1"
@@ -102,10 +102,10 @@
   dependencies:
     knex "2.4.2"
 
-"@directus/sdk@^12.0.1":
-  version "12.1.0"
-  resolved "https://registry.yarnpkg.com/@directus/sdk/-/sdk-12.1.0.tgz#cb6b45fbd412836853ecd75e02e33abbd3a6bd2c"
-  integrity sha512-WSEYrNFKWGeDD+6BG4xuflNqaZAsEOF+eoqC6JBTodKqidmgYglRTUc16+wemwqHXzrW7y8UgA89HWZtR+lW3A==
+"@directus/sdk@^13.0.2":
+  version "13.0.2"
+  resolved "https://registry.yarnpkg.com/@directus/sdk/-/sdk-13.0.2.tgz#8657741b1b0c85d1402db98e4864c6cddfa0b075"
+  integrity sha512-KECQM0w8xlgr5EklX+Jb9+dIzXyvJFjRfhiIAI7l/b0WEtVaCfvRMIrJXR3XsLeVW9u2nu+b/TffOyTMSLjm2w==
 
 "@directus/shared@^9.24.0":
   version "9.24.0"
@@ -129,10 +129,10 @@
     vue-router "4.1.6"
     zod "3.21.4"
 
-"@directus/types@11.0.1":
-  version "11.0.1"
-  resolved "https://registry.yarnpkg.com/@directus/types/-/types-11.0.1.tgz#e7a6826d032b8707e36657dc77b8b58a79d8039b"
-  integrity sha512-cs0DsVH3hsFQ5SVbO7acFSNMHzRSWUpVsLQr3gQAMDievRHKqeRwA/6CCnHBPLxfrQ2gS1befPr+jRDyXqKkWw==
+"@directus/types@11.0.2":
+  version "11.0.2"
+  resolved "https://registry.yarnpkg.com/@directus/types/-/types-11.0.2.tgz#1ca4d1ef1c0014a3b4359ed8bf6247bad862ddad"
+  integrity sha512-vr42KGJtWxQbPxeEmXXYhQNc9W/5WHV9nKY1A3bSuOZoLS3l3HLBcQPmXa9JDqvfm8gLB6dvWT8zU9mPgqt5JA==
   dependencies:
     "@directus/constants" "11.0.1"
     "@directus/schema" "11.0.0"
@@ -146,10 +146,10 @@
     vue-router "4.2.0"
     zod "3.22.4"
 
-"@directus/utils@11.0.1":
-  version "11.0.1"
-  resolved "https://registry.yarnpkg.com/@directus/utils/-/utils-11.0.1.tgz#78c67e4ee1e2f2ddd59f4633471197a2d4cf5c3f"
-  integrity sha512-I1cpMf2fxh8Cv8XeyYUOXH//teeNyEZ3loqHBTIV0m8TlBxdIeWqND8Bqm1AFcep3r6Adolx3vCp/9OvUH0aBg==
+"@directus/utils@11.0.2":
+  version "11.0.2"
+  resolved "https://registry.yarnpkg.com/@directus/utils/-/utils-11.0.2.tgz#44b771736875b7cfbd0d4d4bf4872435fdfbd1ce"
+  integrity sha512-GXcMgZI61bQYeJlXyDC8gkZhXwFSZg7b5nbXfKR8MvhwK2w4jGkV7ybQUxKUsWsKxait0ixuxxgAoZrfqbHfYg==
   dependencies:
     "@directus/constants" "11.0.1"
     date-fns "2.30.0"

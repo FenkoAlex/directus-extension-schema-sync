@@ -1,33 +1,23 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from "vue";
-import { intersectionWith } from "lodash";
-
-import { schemaSnapshot, schemaDiff, schemaApply } from "@directus/sdk";
+import { ref, onMounted } from "vue";
 import { useStores } from "@directus/extensions-sdk";
 
-import { COLLECTION_HEADER } from "./const";
-
-import {
-  Collection as DirectusCollection,
-  Field,
-  Relation,
-} from "@directus/shared/types";
+import { COLLECTION_HEADER, COLLECTION_TO_EXCLUDE_FROM_SCHEMA } from "./const";
 
 import { initDirectusClients } from "./init-directus-clients";
 import Nav from "./nav.vue";
 import { nav } from "./path";
-import { mapFromCollectionabl, recordFromCollectionabl } from "./utils";
+import { mapFromCollectionable, recordFromCollectionable } from "./utils";
 
 import type { Collection } from "./types";
+import { useSchema } from "./useSchema";
 
 const { useNotificationsStore } = useStores();
 const notificationsStore = useNotificationsStore();
 
 const loading = ref(true);
-const schemaDiffResponce = ref<any>(null);
 const schema = ref<any | null>(null);
 const relationsMap = ref<any>(null);
-const canApplySchema = ref(false);
 const changedCollections = ref(null);
 const selected = ref<Collection[]>([]);
 const clientA = ref<any>(null);
@@ -41,21 +31,16 @@ const init = async () => {
 };
 async function requestInitData() {
   loading.value = true;
-  schema.value = await clientA.value.request(schemaSnapshot());
-  relationsMap.value = mapFromCollectionabl(schema.value!.relations as any);
 
-  schemaDiffResponce.value = await clientB.value.request(
-    schemaDiff(schema.value)
-  );
+  // getting schema and sort it to collections, fields and relations
+  schema.value = await useSchema(clientA.value, clientB.value);
+  relationsMap.value = schema.value.relationsMap;
+  console.log("relationsMap:", relationsMap.value);
 
-  console.log(schemaDiffResponce.value);
-
-  if (schemaDiffResponce.value?.status === 204) {
-    console.log("everything is updated!");
-  } else {
-    canApplySchema.value = true;
-    changedCollections.value = schemaDiffResponce.value.diff.collections;
-  }
+  changedCollections.value =
+    schema.value?.diffResponce?.diff?.collections?.filter(
+      (item) => !COLLECTION_TO_EXCLUDE_FROM_SCHEMA[item.collection]
+    );
 
   loading.value = false;
 }
@@ -67,12 +52,12 @@ const handleApplyClick = ref(async () => {
   try {
     console.log("relationsMap.value", relationsMap.value);
 
-    const diffCollections = recordFromCollectionabl(selected.value);
-    const diffFields = mapFromCollectionabl(
-      schemaDiffResponce.value.diff.fields
+    const diffCollections = recordFromCollectionable(selected.value);
+    const diffFields = mapFromCollectionable(
+      schema.value?.diffResponce.diff.fields
     );
-    const diffRelations = mapFromCollectionabl(
-      schemaDiffResponce.value.diff.relations
+    const diffRelations = mapFromCollectionable(
+      schema.value?.diffResponce.diff.relations
     );
     console.log(
       "diffCollections, diffFields, diffRelations",
@@ -82,7 +67,7 @@ const handleApplyClick = ref(async () => {
     );
     console.log("relationsMap.value", relationsMap.value);
     const tmpSchemaDiff = {
-      hash: schemaDiffResponce.value.hash,
+      hash: schema.value?.diffResponce.hash,
       diff: {
         collections: [] as any[],
         fields: [] as any[],
@@ -90,6 +75,8 @@ const handleApplyClick = ref(async () => {
       },
     };
     for (let [key, item] of Object.entries(diffCollections)) {
+      if (COLLECTION_TO_EXCLUDE_FROM_SCHEMA[key]) continue;
+
       tmpSchemaDiff.diff.collections.push(item);
       if (diffFields.has(key)) {
         tmpSchemaDiff.diff.fields.push(...diffFields.get(key));
@@ -101,7 +88,7 @@ const handleApplyClick = ref(async () => {
 
     console.log("tmpSchemaDiff", tmpSchemaDiff);
 
-    const result = await clientB.value.request(schemaApply(tmpSchemaDiff));
+    await schema.value.applySchema(tmpSchemaDiff);
 
     notificationsStore.add({
       type: "success",
@@ -128,7 +115,7 @@ const handleApplyClick = ref(async () => {
     </template>
     <div class="wrapper">
       <div class="mb32">
-        <v-button @click="handleApplyClick" :disabled="!canApplySchema"
+        <v-button @click="handleApplyClick" :disabled="!schema?.canApply"
           >Apply diff</v-button
         >
       </div>
@@ -146,12 +133,12 @@ const handleApplyClick = ref(async () => {
           v-model="selected"
         ></VTable>
         <interface-input-code
-          :value="schemaDiffResponce"
+          :value="schema.diffResponce"
           :line-number="false"
           :alt-options="{ gutters: false }"
           language="json"
         />
-        <h1 v-if="!canApplySchema">Everything is updated</h1>
+        <h1 v-if="!schema?.canApply">Everything is updated</h1>
       </div>
     </div>
   </private-view>

@@ -11,7 +11,7 @@ export const useExportImport = () => {
   const { useNotificationsStore } = useStores();
   const notificationsStore = useNotificationsStore();
 
-  const exportData = async (collectionName: string, currentClient?: any) => {
+  const exportData = async (collectionName: string) => {
     const endpoint = getEndpoint(collectionName);
 
     // usually getEndpoint contains leading slash, but here we need to remove it
@@ -25,19 +25,12 @@ export const useExportImport = () => {
       export: "json",
     };
 
-    // if (exportSettings.sort && exportSettings.sort !== '') params.sort = exportSettings.sort;
-    // if (exportSettings.fields) params.fields = exportSettings.fields;
-    // if (exportSettings.search) params.search = exportSettings.search;
-    // if (exportSettings.filter) params.filter = exportSettings.filter;
-    // if (exportSettings.search) params.search = exportSettings.search;
-    // params.limit = exportSettings.limit ? Math.min(exportSettings.limit, queryLimitMax) : -1;
-
     const exportUrl = api.getUri({
       url,
       params,
     });
 
-    return await fetch(exportUrl).then((data) => data.json());
+    return fetch(exportUrl).then((data) => data.json());
   };
 
   const uploadFile = async (collectionName: string, file: File, remoteClient: any) => {
@@ -55,14 +48,5 @@ export const useExportImport = () => {
     }
   };
 
-  const updateSyncDate = async (collectionName: string, remoteClient: any) => {
-    const collectionObject = {
-      meta: {
-        imported_at: new Date(),
-      },
-    };
-    await remoteClient.request(updateCollection(collectionName, collectionObject as any));
-  };
-
-  return { uploading, importing, uploadFile, exportData, updateSyncDate };
+  return { uploading, importing, uploadFile, exportData };
 };

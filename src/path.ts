@@ -5,14 +5,14 @@ export const nav = {
     name: 'Schema transfer',
     url: root,
   },
-  'item-transfer': {
-    id: 'item-transfer',
-    name: 'Items transfer',
-    url: root + '/item-transfer',
+  'collection-transfer': {
+    id: 'collection-transfer',
+    name: 'Collections transfer',
+    url: root + '/collection-transfer',
   },
-  'universal-item-transfer': {
-    id: 'universal-item-transfer',
-    name: 'Universal items transfer',
-    url: root + '/universal-item-transfer',
+  'universal-collection-transfer': {
+    id: 'universal-collection-transfer',
+    name: 'Universal collections transfer',
+    url: root + '/universal-collection-transfer',
   },
 };

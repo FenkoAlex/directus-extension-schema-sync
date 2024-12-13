@@ -19,8 +19,8 @@ import Nav from "./nav.vue";
 import { useExportImport } from "./useExportImport";
 import {
   splitCollections,
-  recordFromCollectionabl,
-  mapFromCollectionabl,
+  recordFromCollectionable,
+  mapFromCollectionable,
   getRelationFields,
   removeFields,
   createJsonFile,
@@ -90,12 +90,12 @@ const init = async () => {
 
   userCollections.value = collections.userCollections;
   systemCollections.value = collections.systemCollections;
-  collectionsMap.value = recordFromCollectionabl(
+  collectionsMap.value = recordFromCollectionable(
     schema.value!.collections as any
   );
-  fieldsMap.value = mapFromCollectionabl(schema.value!.fields as any);
+  fieldsMap.value = mapFromCollectionablee(schema.value!.fields as any);
   console.log(fieldsMap.value);
-  relationsMap.value = mapFromCollectionabl(schema.value!.relations as any);
+  relationsMap.value = mapFromCollectionablee(schema.value!.relations as any);
   loading.value = false;
   tableLoading.value = false;
 };
@@ -262,9 +262,9 @@ function handleReturnToSelectionClick() {
 </script>
 
 <template>
-  <private-view title="Item transfer">
+  <private-view title="Collection transfer">
     <template v-slot:navigation>
-      <Nav :activeItem="nav['universal-item-transfer'].id" />
+      <Nav :activeItem="nav['universal-collection-transfer'].id" />
     </template>
     <div class="wrapper">
       <div>
@@ -295,7 +295,7 @@ function handleReturnToSelectionClick() {
             >Return to selection</v-button
           >
           <v-button @click="handleTransferClick" v-if="step === 0"
-            >Transfer items</v-button
+            >Transfer collections</v-button
           >
           <v-button
             @click="handleExportClick"

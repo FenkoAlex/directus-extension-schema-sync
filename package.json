@@ -20,11 +20,11 @@
 		"link": "directus-extension link"
 	},
 	"dependencies": {
-		"@directus/sdk": "^12.0.1",
+		"@directus/sdk": "^13.0.2",
 		"lodash": "^4.17.21"
 	},
 	"devDependencies": {
-		"@directus/extensions-sdk": "^10.1.14",
+		"@directus/extensions-sdk": "^10.2.0",
 		"@directus/shared": "^9.24.0",
 		"@types/lodash": "^4.14.200",
 		"dotenv": "^16.3.1",

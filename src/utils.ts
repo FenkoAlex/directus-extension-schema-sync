@@ -1,5 +1,5 @@
 import { cloneDeep } from 'lodash';
-import type { Collection } from './types';
+import type { Collection, Collectionable } from './types';
 
 export function createJsonFile(data: JSON, name: string = '') {
   const str = JSON.stringify(data);
@@ -24,8 +24,8 @@ export function createLogMessage(type: string, message: string) {
   `;
 }
 
-export function recordFromCollectionabl(arr: { collection: string }[]) {
-  return arr.reduce<Record<string, any>>((acc, val) => {
+export function recordFromCollectionable<T extends Collectionable>(arr: T[]) {
+  return arr.reduce<Record<string, T>>((acc, val) => {
     acc[val.collection] = {
       ...val,
     };
@@ -34,8 +34,8 @@ export function recordFromCollectionabl(arr: { collection: string }[]) {
   }, {});
 }
 
-export function mapFromCollectionabl(arr: { collection: string }[]) {
-  const result = new Map();
+export function mapFromCollectionable<T extends Collectionable>(arr: T[]) {
+  const result = new Map<string, T[]>();
 
   arr.forEach((element) => {
     const tmpArr = result.get(element.collection);

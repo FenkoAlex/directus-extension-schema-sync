@@ -1,4 +1,7 @@
 import {
+  AuthenticationClient,
+  DirectusClient as DClient,
+  RestClient,
   readActivities,
 } from "@directus/sdk";
 
@@ -6,14 +9,19 @@ import type {
   Collection as DirectusCollection
 } from "@directus/shared/types";
 
+export type DirectusClient = DClient<any> & AuthenticationClient<any> & RestClient<any>
+
+export type ExportElement = {
+  collection: string;
+  exclude_fields?: string[];
+  related_collections?: ExportElement[];
+  referenced_collections?: ExportElement[];
+};
 export type ExportSchemaConfig = {
   export: boolean;
-  exclude_fields?: string[];
-  related_collections?: {
-    collection: string;
-    exclude_fields?: string[];
-  }[];
-}
+} & ExportElement;
+
+export type Collectionable = { collection: string };
 
 export type Collection = DirectusCollection & {
   meta: {
@@ -22,6 +30,7 @@ export type Collection = DirectusCollection & {
     imported_at?: string;
   };
   last_sync_date?: string;
+  exportOrder: ExportElement[];
 };
 
 export type Activity = ReturnType<typeof readActivities> & {
@@ -31,3 +40,9 @@ export type Activity = ReturnType<typeof readActivities> & {
 }
 
 export type ActivitiesMap = Map<string, Map<string, Activity[]>>;
+
+export type ExportDateCollection = {
+  id: string;
+  data_update_date: Date;
+  last_sync_date: Date;
+};
