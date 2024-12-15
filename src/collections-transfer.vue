@@ -9,7 +9,7 @@ import {
   readItems,
 } from "@directus/sdk";
 import { useStores } from "@directus/extensions-sdk";
-import { sortBy } from "lodash";
+import { sortBy, uniqBy } from "lodash";
 
 import { initDirectusClients } from "./init-directus-clients";
 import { nav } from "./path";
@@ -22,13 +22,16 @@ import {
   createJsonFile,
   createLogMessage,
   logMessageTypes,
+  getPublicURL,
 } from "./utils";
 import {
   COLLECTION_HEADER,
   EXPORT_DATE_COLLECTOIN_NAME,
   EXPORT_DATE_COLLECTOIN_PARAMS,
   LAST_SYNC_HEADER,
+  SHOW_CHANGED_ITEM_HEADER,
 } from "./const";
+import { CHANGED_ITEMS_ACTIVITIES } from "./path";
 
 import type {
   Collection,
@@ -54,9 +57,7 @@ const systemCollections = ref<Collection[]>([]);
 
 const schema = ref<Awaited<ReturnType<typeof useSchema>> | null>(null);
 
-const collectionsMap = ref<any>(null);
-const fieldsMap = ref<any>(null);
-const relationsMap = ref<any>(null);
+const collectionsRecord = ref<any>(null);
 
 const activities = ref<ActivitiesMap>(new Map());
 const activitiesDeletedItems = ref<ActivitiesMap>(new Map());
@@ -67,11 +68,11 @@ const collectionsSorted = computed(() => {
   const result = sortBy(
     userCollections.value
       .map((collection) => {
-        if (collectionsMap.value[collection.collection]?.last_sync_date) {
+        if (collectionsRecord.value[collection.collection]?.last_sync_date) {
           return {
             ...collection,
             last_sync_date:
-              collectionsMap.value[collection.collection].last_sync_date,
+              collectionsRecord.value[collection.collection].last_sync_date,
           };
         }
 
@@ -136,12 +137,8 @@ async function requestInitData() {
 
   // getting schema and sort it to collections, fields and relations
   schema.value = await useSchema(clientA.value, clientB.value);
-  collectionsMap.value = schema.value.collectionsRecord;
-  fieldsMap.value = schema.value.fieldsMap;
-  relationsMap.value = schema.value.relationsMap;
-  console.log("collectionsMap:", collectionsMap.value);
-  console.log("fieldsMap:", fieldsMap.value);
-  console.log("relationsMap:", relationsMap.value);
+  collectionsRecord.value = schema.value.collectionsRecord;
+  console.log("collectionsMap:", collectionsRecord.value);
 
   const remoteExportDateCollection: ExportDateCollection[] =
     await clientB.value.request(
@@ -159,9 +156,9 @@ async function requestInitData() {
   let collectionCount = 0;
   for (let element of remoteExportDateCollection) {
     if (element.last_sync_date) {
-      if (collectionsMap.value[element.id]) {
-        collectionsMap.value[element.id] = {
-          ...collectionsMap.value[element.id],
+      if (collectionsRecord.value[element.id]) {
+        collectionsRecord.value[element.id] = {
+          ...collectionsRecord.value[element.id],
           last_sync_date: element.last_sync_date,
         };
         // divide into groups
@@ -216,8 +213,8 @@ async function requestInitData() {
     let deletedActivities = await clientA.value.request(
       readActivities(getFilter(["delete"], j))
     );
-    while (deletedActivities.length === ACTIVITIES_PER_REQUEST) {
-      activitiesDeletedItems.value = proceccActivities(
+    while (deletedActivities.length > 0) {
+      activitiesDeletedItems.value = processActivities(
         deletedActivities,
         activitiesDeletedItems.value
       );
@@ -231,8 +228,9 @@ async function requestInitData() {
     let activitiesResponse = await clientA.value.request(
       readActivities(getFilter(["create", "update", "delete"], j))
     );
-    while (activitiesResponse.length === ACTIVITIES_PER_REQUEST) {
-      activities.value = proceccActivities(
+    console.log("activitiesResponse", activitiesResponse);
+    while (activitiesResponse.length > 0) {
+      activities.value = processActivities(
         activitiesResponse,
         activities.value
       );
@@ -253,7 +251,8 @@ onMounted(() => {
   init();
 });
 
-function proceccActivities(newActivities: Activity[], activities = new Map()) {
+function processActivities(newActivities: Activity[], activities = new Map()) {
+  console.log("processActivities", newActivities, activities);
   for (let element of newActivities) {
     const tmpMap = new Map(activities.get(element.collection) || []);
     tmpMap.set(element.item, {
@@ -306,9 +305,9 @@ const handleExportClick = ref(async () => {
     console.log(
       "collection to transfer",
       item,
-      collectionsMap.value[item.collection]
+      collectionsRecord.value[item.collection]
     );
-    for (let element of collectionsMap.value[item.collection].exportOrder ||
+    for (let element of collectionsRecord.value[item.collection].exportOrder ||
       []) {
       let originData;
       try {
@@ -372,7 +371,7 @@ const handleExportClick = ref(async () => {
 
     // Update sync date of all unchanged collections
     // const unchangedSync = await Promise.allSettled(
-    Object.keys(collectionsMap.value).map((collectionName) => {
+    Object.keys(collectionsRecord.value).map((collectionName) => {
       if (!activities.value.has(collectionName)) {
         // return updateSyncDate(collectionName, clientB.value);
         dateSyncJson.push({
@@ -440,16 +439,16 @@ function traversalExportTree(
 }
 
 function selectCollection(item: Collection) {
-  selected.value = [...selected.value, item];
-  if (!collectionsMap.value[item.collection]?.exportOrder) {
-    collectionsMap.value[item.collection].exportOrder = traversalExportTree(
+  selected.value = uniqBy([...selected.value, item], "collection");
+  if (!collectionsRecord.value[item.collection]?.exportOrder) {
+    collectionsRecord.value[item.collection].exportOrder = traversalExportTree(
       item.collection,
       item.meta.export_schema!
     );
     console.log(
       "first calculation of export order",
       item.meta.export_schema,
-      collectionsMap.value[item.collection].exportOrder
+      collectionsRecord.value[item.collection].exportOrder
     );
   }
 }
@@ -502,11 +501,16 @@ const handleApplySchemaClick = ref(async () => {
 
 function handleSelectChangedCollectionsClick() {
   for (let collectionName of activities.value?.keys() || []) {
-    const collection = collectionsMap.value[collectionName] as Collection;
+    const collection = collectionsRecord.value[collectionName] as Collection;
     if (collection && collection.meta.export_schema?.export) {
       selectCollection(collection);
     }
   }
+}
+
+function checkChangedCollection(name: string) {
+  const collection = collectionsRecord.value[name] as Collection;
+  return activities.value.has(name) && collection;
 }
 </script>
 
@@ -582,14 +586,39 @@ function handleSelectChangedCollectionsClick() {
         <h1 v-if="step === 1">Confirm collections</h1>
         <VTable
           :showSelect="'multiple'"
-          :headers="[...COLLECTION_HEADER, LAST_SYNC_HEADER]"
+          :headers="[
+            ...COLLECTION_HEADER,
+            LAST_SYNC_HEADER,
+            SHOW_CHANGED_ITEM_HEADER,
+          ]"
           :items="step === 0 ? collectionsSorted : collectionForConfirm"
           :itemKey="'collection'"
           :modelValue="selected"
           :loading="tableLoading || transferProcessing"
           @item-selected="handleItemSelect"
           @update:modelValue="updateModelValue"
-        ></VTable>
+        >
+          <template #[`item.collection`]="{ item }">
+            <span
+              :class="{
+                changedCollection: checkChangedCollection(item.collection),
+              }"
+              >{{ item.collection }}</span
+            >
+          </template>
+          <template #[`item.changed_items_link`]="{ item }">
+            <a
+              class="link"
+              v-if="checkChangedCollection(item.collection)"
+              target="_blank"
+              :href="`${getPublicURL()}admin/${CHANGED_ITEMS_ACTIVITIES}?collection=${
+                item.collection
+              }&date=${item.last_sync_date}`"
+            >
+              open "{{ item.collection }}" changed items
+            </a>
+          </template>
+        </VTable>
       </div>
     </div>
   </private-view>
@@ -610,5 +639,15 @@ function handleSelectChangedCollectionsClick() {
 .controls {
   display: flex;
   gap: 32px;
+}
+
+.link {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.changedCollection {
+  font-weight: 800;
+  color: green;
 }
 </style>

@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useStores } from "@directus/extensions-sdk";
+import { uniqBy } from "lodash";
 
 import { COLLECTION_HEADER, COLLECTION_TO_EXCLUDE_FROM_SCHEMA } from "./const";
-
 import { initDirectusClients } from "./init-directus-clients";
 import Nav from "./nav.vue";
 import { nav } from "./path";
 import { mapFromCollectionable, recordFromCollectionable } from "./utils";
-
-import type { Collection } from "./types";
 import { useSchema } from "./useSchema";
+
+import type { Collection, Collectionable } from "./types";
 
 const { useNotificationsStore } = useStores();
 const notificationsStore = useNotificationsStore();
 
 const loading = ref(true);
-const schema = ref<any | null>(null);
+const schema = ref<Awaited<ReturnType<typeof useSchema>> | null>(null);
 const relationsMap = ref<any>(null);
-const changedCollections = ref(null);
+const changedCollections = ref<any>(null);
 const selected = ref<Collection[]>([]);
 const clientA = ref<any>(null);
 const clientB = ref<any>(null);
@@ -36,11 +36,18 @@ async function requestInitData() {
   schema.value = await useSchema(clientA.value, clientB.value);
   relationsMap.value = schema.value.relationsMap;
   console.log("relationsMap:", relationsMap.value);
+  const accChengedCollection = uniqBy(
+    [
+      ...(schema.value?.diffResponce?.diff?.collections || []),
+      ...(schema.value?.diffResponce?.diff?.fields || []),
+      ...(schema.value?.diffResponce?.diff?.relations || []),
+    ],
+    "collection"
+  );
 
-  changedCollections.value =
-    schema.value?.diffResponce?.diff?.collections?.filter(
-      (item) => !COLLECTION_TO_EXCLUDE_FROM_SCHEMA[item.collection]
-    );
+  changedCollections.value = accChengedCollection.filter(
+    (item) => !COLLECTION_TO_EXCLUDE_FROM_SCHEMA[item.collection as string]
+  );
 
   loading.value = false;
 }
@@ -49,6 +56,8 @@ onMounted(() => {
 });
 
 const handleApplyClick = ref(async () => {
+  if (!schema.value)
+    throw new Error("schema transfer applied before data initialization");
   try {
     console.log("relationsMap.value", relationsMap.value);
 
@@ -79,10 +88,14 @@ const handleApplyClick = ref(async () => {
 
       tmpSchemaDiff.diff.collections.push(item);
       if (diffFields.has(key)) {
-        tmpSchemaDiff.diff.fields.push(...diffFields.get(key));
+        tmpSchemaDiff.diff.fields.push(
+          ...(diffFields.get(key) as Collectionable[])
+        );
       }
       if (diffRelations.has(key)) {
-        tmpSchemaDiff.diff.relations.push(...diffRelations.get(key));
+        tmpSchemaDiff.diff.relations.push(
+          ...(diffRelations.get(key) as Collectionable[])
+        );
       }
     }
 
@@ -106,6 +119,25 @@ const handleApplyClick = ref(async () => {
     });
   }
 });
+
+async function handleApplyWholeClick() {
+  try {
+    await schema.value?.applySchema();
+    notificationsStore.add({
+      type: "success",
+      title: "Change applied successfully",
+      dialog: false,
+    });
+  } catch (e) {
+    console.error(e);
+    notificationsStore.add({
+      type: "error",
+      title: "Error duiring apply",
+      text: e?.errors?.[0]?.message,
+      dialog: true,
+    });
+  }
+}
 </script>
 
 <template>
@@ -114,10 +146,17 @@ const handleApplyClick = ref(async () => {
       <Nav :activeItem="nav.main.id" />
     </template>
     <div class="wrapper">
-      <div class="mb32">
-        <v-button @click="handleApplyClick" :disabled="!schema?.canApply"
-          >Apply diff</v-button
+      <div class="controls mb32">
+        <v-button
+          @click="handleApplyClick"
+          :disabled="!schema?.canApply || selected.length === 0"
         >
+          Apply selected diff
+        </v-button>
+
+        <v-button @click="handleApplyWholeClick" :disabled="!schema?.canApply">
+          Apply whole diff
+        </v-button>
       </div>
       <div class="loaderWrapper" v-if="loading">
         <v-progress-circular class="loader" indeterminate />
@@ -133,7 +172,7 @@ const handleApplyClick = ref(async () => {
           v-model="selected"
         ></VTable>
         <interface-input-code
-          :value="schema.diffResponce"
+          :value="schema?.diffResponce"
           :line-number="false"
           :alt-options="{ gutters: false }"
           language="json"
@@ -157,5 +196,10 @@ const handleApplyClick = ref(async () => {
 
 .mb32 {
   margin-bottom: 32px;
+}
+
+.controls {
+  display: flex;
+  gap: 32px;
 }
 </style>

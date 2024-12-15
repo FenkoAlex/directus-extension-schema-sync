@@ -16,3 +16,4 @@ export const nav = {
     url: root + '/universal-collection-transfer',
   },
 };
+export const CHANGED_ITEMS_ACTIVITIES = 'schema-export/changed-items-activities';

@@ -51,7 +51,7 @@ export const EXPORT_DATE_COLLECTOIN_PARAMS = {
   ],
 }
 
-export const COLLECTION_TO_EXCLUDE_FROM_SCHEMA = {
+export const COLLECTION_TO_EXCLUDE_FROM_SCHEMA: Record<string, boolean> = {
   [EXPORT_DATE_COLLECTOIN_NAME]: true,
 }
 
@@ -63,3 +63,4 @@ export const COLLECTION_HEADER = [
   },
 ];
 export const LAST_SYNC_HEADER = { text: "Last sync date", value: "last_sync_date", width: '300' };
+export const SHOW_CHANGED_ITEM_HEADER = { text: "Open changed items list", value: "changed_items_link", width: '300' };
