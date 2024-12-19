@@ -93,9 +93,9 @@ const init = async () => {
   collectionsMap.value = recordFromCollectionable(
     schema.value!.collections as any
   );
-  fieldsMap.value = mapFromCollectionablee(schema.value!.fields as any);
+  fieldsMap.value = mapFromCollectionable(schema.value!.fields as any);
   console.log(fieldsMap.value);
-  relationsMap.value = mapFromCollectionablee(schema.value!.relations as any);
+  relationsMap.value = mapFromCollectionable(schema.value!.relations as any);
   loading.value = false;
   tableLoading.value = false;
 };

@@ -33,13 +33,16 @@ export type Collection = DirectusCollection & {
   exportOrder: ExportElement[];
 };
 
+export type CollectionsRecord = Record<string, Collection>;
+
 export type Activity = ReturnType<typeof readActivities> & {
   collection: string;
   item: string;
   timestamp: string;
+  action: string;
 }
 
-export type ActivitiesMap = Map<string, Map<string, Activity[]>>;
+export type ActivitiesMap = Map<string, Map<string, Record<string, Activity>>>;
 
 export type ExportDateCollection = {
   id: string;

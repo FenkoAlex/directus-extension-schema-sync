@@ -38,7 +38,7 @@ export const useSchema = async (clientA: DirectusClient, clientB: DirectusClient
       );
     }
 
-    console.log('diff for apply after check: ', tmpDiff);
+    console.log('"applySchema" diff for apply after check: ', tmpDiff);
 
     return clientB.request(
       schemaApply(tmpDiff)

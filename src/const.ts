@@ -1,5 +1,5 @@
 export const EXPORT_DATE_COLLECTOIN_NAME =
-  "directus-extension-schema-export_export-date";
+  "extension_schema_export_export_date";
 export const EXPORT_DATE_COLLECTOIN_PARAMS = {
   collection: EXPORT_DATE_COLLECTOIN_NAME,
   schema: {
@@ -64,3 +64,13 @@ export const COLLECTION_HEADER = [
 ];
 export const LAST_SYNC_HEADER = { text: "Last sync date", value: "last_sync_date", width: '300' };
 export const SHOW_CHANGED_ITEM_HEADER = { text: "Open changed items list", value: "changed_items_link", width: '300' };
+
+export const ACTIVITIES_TABLE_HEADER = [
+  { text: "Action", value: "action", width: '90' },
+  { text: "Item", value: "item" },
+  { text: "Action On", value: "timestamp" },
+  { text: "Action By", value: "user" },
+]
+
+export const COLLECTION_PER_REQUEST = 50;
+export const ACTIVITIES_PER_REQUEST = 2000;

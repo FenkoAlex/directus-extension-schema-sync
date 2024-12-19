@@ -10,12 +10,14 @@ import {
 } from "@directus/sdk";
 import { useStores } from "@directus/extensions-sdk";
 import { sortBy, uniqBy } from "lodash";
+import { format } from "date-fns";
 
 import { initDirectusClients } from "./init-directus-clients";
 import { nav } from "./path";
 import Nav from "./nav.vue";
 import { useExportImport } from "./useExportImport";
 import { useSchema } from "./useSchema";
+import { useActivities } from "./useActivities";
 import {
   splitCollections,
   removeFields,
@@ -30,6 +32,8 @@ import {
   EXPORT_DATE_COLLECTOIN_PARAMS,
   LAST_SYNC_HEADER,
   SHOW_CHANGED_ITEM_HEADER,
+  COLLECTION_PER_REQUEST,
+  ACTIVITIES_PER_REQUEST,
 } from "./const";
 import { CHANGED_ITEMS_ACTIVITIES } from "./path";
 
@@ -40,6 +44,7 @@ import type {
   ActivitiesMap,
   ExportElement,
   ExportDateCollection,
+  CollectionsRecord,
 } from "./types";
 
 const { useNotificationsStore } = useStores();
@@ -57,32 +62,21 @@ const systemCollections = ref<Collection[]>([]);
 
 const schema = ref<Awaited<ReturnType<typeof useSchema>> | null>(null);
 
-const collectionsRecord = ref<any>(null);
+const collectionsRecord = ref<CollectionsRecord | null>(null);
 
 const activities = ref<ActivitiesMap>(new Map());
 const activitiesDeletedItems = ref<ActivitiesMap>(new Map());
+const activitiesCollectionSelections = ref<any[][]>([]);
 
 const search = ref<string | null>(null);
 const collectionsSorted = computed(() => {
   const normalizedSearch = search.value?.toLowerCase();
   const result = sortBy(
-    userCollections.value
-      .map((collection) => {
-        if (collectionsRecord.value[collection.collection]?.last_sync_date) {
-          return {
-            ...collection,
-            last_sync_date:
-              collectionsRecord.value[collection.collection].last_sync_date,
-          };
-        }
-
-        return collection;
-      })
-      .filter(
-        (collection) =>
-          collection.meta.export_schema?.export &&
-          collection.collection.toLowerCase().includes(normalizedSearch ?? "")
-      ),
+    userCollections.value.filter(
+      (collection) =>
+        collection.meta.export_schema?.export &&
+        collection.collection.toLowerCase().includes(normalizedSearch ?? "")
+    ),
     ["meta.sort", "collection"]
   );
 
@@ -91,7 +85,6 @@ const collectionsSorted = computed(() => {
 const selected = ref<Collection[]>([]);
 const collectionForConfirm = ref<Collection[]>([]);
 watch(selected, (collections) => {
-  console.log("selected watcher", selected.value);
   if (step.value === 0) {
     collectionForConfirm.value = collections;
   }
@@ -104,7 +97,7 @@ const init = async () => {
   clientA.value = client1;
   clientB.value = client2;
   await checkExportDateCollection();
-  requestInitData();
+  await requestInitData();
 };
 
 async function checkExportDateCollection() {
@@ -112,23 +105,65 @@ async function checkExportDateCollection() {
     const exportDateCollection = await clientB.value.request(
       readCollection(EXPORT_DATE_COLLECTOIN_NAME)
     );
-
-    console.log(exportDateCollection);
   } catch (e) {
+    console.log("extention did`t find ", EXPORT_DATE_COLLECTOIN_NAME);
+    console.log("creating...");
     await clientB.value.request(
       createCollection(EXPORT_DATE_COLLECTOIN_PARAMS)
     );
+    console.log(EXPORT_DATE_COLLECTOIN_NAME, " added");
   }
+}
+async function loadActivities() {
+  loading.value = true;
+
+  const { getActivities } = useActivities(clientA.value);
+  const getFilter =
+    (actions: string[], part: number = 0) =>
+    (page: number = 1) => {
+      const filterObj = {
+        limit: ACTIVITIES_PER_REQUEST,
+        page,
+        filter: {
+          _and: [
+            {
+              action: {
+                _in: actions,
+              },
+            },
+            { _or: activitiesCollectionSelections.value[part] },
+          ],
+        } as any,
+      };
+
+      return filterObj;
+    };
+
+  console.log("activities loading...");
+  for (let j = 0; j < activitiesCollectionSelections.value.length; j++) {
+    activitiesDeletedItems.value = await getActivities(
+      getFilter(["delete"], j),
+      activitiesDeletedItems.value
+    );
+    activities.value = await getActivities(
+      getFilter(["create", "update", "delete"], j),
+      activities.value
+    );
+  }
+
+  console.log("activities detected: ", activities.value);
+  console.log("deleted activities: ", activitiesDeletedItems.value);
+
+  loading.value = false;
 }
 
 async function requestInitData() {
-  const COLLECTION_PER_REQUEST = 75;
-  const ACTIVITIES_PER_REQUEST = 2000;
-
   loading.value = true;
   tableLoading.value = true;
 
+  console.log("=== initial data loading ===");
   // getting collections from current Directus Client
+  console.log("loading current Directus collections...");
   const rawCollections = await clientA.value.request(readCollections());
   const collections = splitCollections(rawCollections);
   userCollections.value = collections.userCollections;
@@ -136,9 +171,10 @@ async function requestInitData() {
   systemCollections.value = collections.systemCollections;
 
   // getting schema and sort it to collections, fields and relations
+  console.log("parsing current schema...");
   schema.value = await useSchema(clientA.value, clientB.value);
   collectionsRecord.value = schema.value.collectionsRecord;
-  console.log("collectionsMap:", collectionsRecord.value);
+  console.log("collectionsRecord from schema:", collectionsRecord.value);
 
   const remoteExportDateCollection: ExportDateCollection[] =
     await clientB.value.request(
@@ -146,103 +182,62 @@ async function requestInitData() {
         limit: -1,
       })
     );
-  console.log(
-    `collection in ${EXPORT_DATE_COLLECTOIN_NAME} on remote directus: `,
-    remoteExportDateCollection
-  );
 
-  const collectionSelections: any[][] = [];
   let tmpCollectionSelections: any[] = [];
   let collectionCount = 0;
+  // enrich data with last_sync_date and prepare collections for filter
   for (let element of remoteExportDateCollection) {
     if (element.last_sync_date) {
       if (collectionsRecord.value[element.id]) {
         collectionsRecord.value[element.id] = {
           ...collectionsRecord.value[element.id],
-          last_sync_date: element.last_sync_date,
+          last_sync_date: element.last_sync_date as unknown as string,
         };
         // divide into groups
         if (collectionCount >= COLLECTION_PER_REQUEST) {
-          collectionSelections.push(tmpCollectionSelections);
+          activitiesCollectionSelections.value.push(tmpCollectionSelections);
           tmpCollectionSelections = [];
           collectionCount = 0;
         }
-        tmpCollectionSelections.push({
-          _and: [
-            {
-              collection: {
-                _eq: element.id,
-              },
-            },
-            {
-              timestamp: {
-                _gte: element.last_sync_date,
-              },
-            },
-          ],
-        });
         collectionCount++;
       }
     }
   }
-  collectionSelections.push(tmpCollectionSelections);
+  activitiesCollectionSelections.value.push(tmpCollectionSelections);
 
-  const getFilter = (actions: string[], part: number = 0, page: number = 1) => {
-    const filterObj = {
-      limit: ACTIVITIES_PER_REQUEST,
-      page,
-      filter: {
-        _and: [
-          {
-            action: {
-              _in: actions,
-            },
+  // add last_sync_date to displaed items
+  userCollections.value = userCollections.value.map((collection) => {
+    if (collectionsRecord.value?.[collection.collection]?.last_sync_date) {
+      return {
+        ...collection,
+        last_sync_date:
+          collectionsRecord.value[collection.collection].last_sync_date,
+      };
+    }
+
+    return collection;
+  });
+
+  // preparing filter for activities load
+  for (let element of Object.values(collectionsRecord.value)) {
+    const tmpFilter: any = {
+      _and: [
+        {
+          collection: {
+            _eq: element.collection,
           },
-          { _or: collectionSelections[part] },
-        ],
-      } as any,
+        },
+      ],
     };
-
-    return filterObj;
-  };
-
-  console.log("chunks collection selections: ", collectionSelections);
-
-  for (let j = 0; j < collectionSelections.length; j++) {
-    let i = 1;
-    let deletedActivities = await clientA.value.request(
-      readActivities(getFilter(["delete"], j))
-    );
-    while (deletedActivities.length > 0) {
-      activitiesDeletedItems.value = processActivities(
-        deletedActivities,
-        activitiesDeletedItems.value
-      );
-      i++;
-      deletedActivities = await clientA.value.request(
-        readActivities(getFilter(["delete"], j, i))
-      );
+    if (element.last_sync_date) {
+      tmpFilter._and.push({
+        timestamp: {
+          _gte: element.last_sync_date,
+        },
+      });
     }
-    i = 1;
-
-    let activitiesResponse = await clientA.value.request(
-      readActivities(getFilter(["create", "update", "delete"], j))
-    );
-    console.log("activitiesResponse", activitiesResponse);
-    while (activitiesResponse.length > 0) {
-      activities.value = processActivities(
-        activitiesResponse,
-        activities.value
-      );
-      i++;
-      activitiesResponse = await clientA.value.request(
-        readActivities(getFilter(["create", "update", "delete"], j, i))
-      );
-    }
+    tmpCollectionSelections.push(tmpFilter);
   }
-
-  console.log("activities.value:", activities.value);
-  console.log("activitiesDeletedItems.value:", activitiesDeletedItems.value);
 
   loading.value = false;
   tableLoading.value = false;
@@ -250,20 +245,6 @@ async function requestInitData() {
 onMounted(() => {
   init();
 });
-
-function processActivities(newActivities: Activity[], activities = new Map()) {
-  console.log("processActivities", newActivities, activities);
-  for (let element of newActivities) {
-    const tmpMap = new Map(activities.get(element.collection) || []);
-    tmpMap.set(element.item, {
-      ...(tmpMap.get(element.item) || {}),
-      [element.timestamp]: element,
-    });
-    activities.set(element.collection, tmpMap);
-  }
-
-  return activities;
-}
 
 async function uploadItems(collectionName: string, data: JSON) {
   const file = createJsonFile(data, collectionName);
@@ -287,7 +268,7 @@ async function deleteItems(collectionName: string) {
     }
   }
 
-  console.log("arrToDelete", arrToDelete);
+  console.log(`"${collectionName}" items to delete:`, arrToDelete);
 
   //@ts-ignore
   await clientB.value.request(deleteItemsSdk(collectionName, arrToDelete));
@@ -300,19 +281,20 @@ const handleExportClick = ref(async () => {
   const dataMap = new Map();
   const dateSyncJson: Partial<ExportDateCollection>[] = [];
   const date = new Date();
+  console.log("transferring data...");
 
+  // load data from master directus
   for (let item of selected.value) {
-    console.log(
-      "collection to transfer",
-      item,
-      collectionsRecord.value[item.collection]
-    );
+    console.log("---");
+    console.log(`| Preparing "${item.collection}"...`, item);
+    // download data per collection from exportOrder
     for (let element of collectionsRecord.value[item.collection].exportOrder ||
       []) {
       let originData;
       try {
         originData = await exportData(element.collection);
         if (originData.errors) {
+          // in this case directus doesn't pass error
           const e = new Error();
           //@ts-ignore
           e.errors = originData.errors;
@@ -323,7 +305,7 @@ const handleExportClick = ref(async () => {
         textLog.push(
           createLogMessage(
             logMessageTypes.error,
-            `originData ${element.collection} load faild ${
+            `originData "${element.collection}" load faild ${
               e?.errors?.[0]?.message || ""
             }`
           )
@@ -331,28 +313,28 @@ const handleExportClick = ref(async () => {
         continue;
       }
 
+      console.log("| collection: ", element.collection);
       originData = removeFields(originData, ["user_created", "user_updated"]);
       const fieldsToRemove = element?.exclude_fields || [];
-      console.log(
-        "fieldsToRemove before export",
-        element.collection,
-        fieldsToRemove
-      );
+      console.log("|    fields to remove before export: ", fieldsToRemove);
 
       const secureData = removeFields(originData, fieldsToRemove);
+      console.log("|    secure data: ", secureData);
 
       dataMap.set(element.collection, {
         origin: originData,
         secure: secureData,
       });
     }
+    console.log("---");
 
+    // send data to receaving directus
     for (let [collectionName, data] of dataMap.entries()) {
       try {
-        console.log("data.secure", data.secure);
+        console.log(`"${collectionName}" uploading...`);
         await uploadItems(collectionName, data.secure);
+        console.log(`"${collectionName}" deleting...`);
         await deleteItems(collectionName);
-        // await updateSyncDate(collectionName, clientB.value, true);
         dateSyncJson.push({
           id: collectionName,
           data_update_date: date,
@@ -369,42 +351,44 @@ const handleExportClick = ref(async () => {
       }
     }
 
-    // Update sync date of all unchanged collections
-    // const unchangedSync = await Promise.allSettled(
-    Object.keys(collectionsRecord.value).map((collectionName) => {
-      if (!activities.value.has(collectionName)) {
-        // return updateSyncDate(collectionName, clientB.value);
-        dateSyncJson.push({
-          id: collectionName,
-          last_sync_date: date,
-        });
-      }
-    });
-    // );
-
-    console.log(
-      `data to update ${EXPORT_DATE_COLLECTOIN_NAME}: `,
-      dateSyncJson
-    );
-    // update EXPORT_DATE_COLLECTOIN_NAME with new Dates
-    await uploadItems(
-      EXPORT_DATE_COLLECTOIN_NAME,
-      dateSyncJson as unknown as JSON
-    );
-    // Update initial data
-    await requestInitData();
-    transferProcessing.value = false;
-
-    if (failedCollections.size === 0) {
-      notificationsStore.add({
-        type: "success",
-        title: "Item successfully transferred",
-        dialog: true,
-      });
-    }
+    // print log
     log.value = textLog.join("");
   }
+
+  // Update sync date of all unchanged collections
+  Object.keys(collectionsRecord.value).map((collectionName) => {
+    if (!activities.value.has(collectionName)) {
+      dateSyncJson.push({
+        id: collectionName,
+        last_sync_date: date,
+      });
+    }
+  });
+
+  console.log(`updating "${EXPORT_DATE_COLLECTOIN_NAME}"...`, dateSyncJson);
+  // update EXPORT_DATE_COLLECTOIN_NAME with new Dates
+  await uploadItems(
+    EXPORT_DATE_COLLECTOIN_NAME,
+    dateSyncJson as unknown as JSON
+  );
+  if (failedCollections.size === 0) {
+    notificationsStore.add({
+      type: "success",
+      title: "Item successfully transferred",
+      dialog: true,
+    });
+  }
+
+  // Update initial data
+  resetData();
+  transferProcessing.value = false;
 });
+
+function resetData() {
+  activities.value = new Map();
+  activitiesDeletedItems.value = new Map();
+  selected.value = [];
+}
 
 function updateModelValue(newValue) {
   const selectableTable =
@@ -441,15 +425,18 @@ function traversalExportTree(
 function selectCollection(item: Collection) {
   selected.value = uniqBy([...selected.value, item], "collection");
   if (!collectionsRecord.value[item.collection]?.exportOrder) {
+    console.log("---");
+    console.log(`| calculating export order for ${item.collection}...`);
     collectionsRecord.value[item.collection].exportOrder = traversalExportTree(
       item.collection,
       item.meta.export_schema!
     );
+    console.log("| schema: ", item.meta.export_schema);
     console.log(
-      "first calculation of export order",
-      item.meta.export_schema,
+      "| order: ",
       collectionsRecord.value[item.collection].exportOrder
     );
+    console.log("---");
   }
 }
 
@@ -467,8 +454,7 @@ function handleItemSelect(event: { value: boolean; item: Collection }) {
 
 function handleTransferClick() {
   step.value = 1;
-  console.log("selected.value", selected.value);
-  console.log("collectionForConfirm.value", collectionForConfirm.value);
+  log.value = "";
 }
 function handleReturnToSelectionClick() {
   step.value = 0;
@@ -509,7 +495,7 @@ function handleSelectChangedCollectionsClick() {
 }
 
 function checkChangedCollection(name: string) {
-  const collection = collectionsRecord.value[name] as Collection;
+  const collection = collectionsRecord.value?.[name] as Collection;
   return activities.value.has(name) && collection;
 }
 </script>
@@ -566,6 +552,9 @@ function checkChangedCollection(name: string) {
           >
         </div>
         <div class="mb controls" v-if="step === 0">
+          <v-button @click="loadActivities" :loading="loading"
+            >Load activities</v-button
+          >
           <v-button
             @click="handleApplySchemaClick"
             :disabled="!schema?.canApply"
@@ -579,6 +568,7 @@ function checkChangedCollection(name: string) {
           </v-button>
         </div>
         <v-textarea
+          class="mb32"
           v-model="log"
           :disabled="true"
           v-if="step === 1 && log.length"
@@ -603,8 +593,14 @@ function checkChangedCollection(name: string) {
               :class="{
                 changedCollection: checkChangedCollection(item.collection),
               }"
-              >{{ item.collection }}</span
+              >{{ item.collection && item.collection }}</span
             >
+          </template>
+          <template #[`item.last_sync_date`]="{ item }">
+            {{
+              item.last_sync_date &&
+              format(item.last_sync_date, "dd.MM.yyyy HH:mm:ss")
+            }}
           </template>
           <template #[`item.changed_items_link`]="{ item }">
             <a
@@ -613,9 +609,9 @@ function checkChangedCollection(name: string) {
               target="_blank"
               :href="`${getPublicURL()}admin/${CHANGED_ITEMS_ACTIVITIES}?collection=${
                 item.collection
-              }&date=${item.last_sync_date}`"
+              }${item.last_sync_date ? `&date=${item.last_sync_date}` : ''}`"
             >
-              open "{{ item.collection }}" changed items
+              open "{{ item.collection && item.collection }}" changed items
             </a>
           </template>
         </VTable>

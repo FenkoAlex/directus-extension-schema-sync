@@ -2,7 +2,7 @@
 	"name": "@farawaygg/directus-extension-schema-export",
 	"description": "export schema to other directus env",
 	"icon": "extension",
-	"version": "1.0.7",
+	"version": "1.0.10",
 	"keywords": [
 		"directus",
 		"directus-extension",
@@ -21,6 +21,7 @@
 	},
 	"dependencies": {
 		"@directus/sdk": "^13.0.2",
+		"date-fns": "^3.0.0",
 		"lodash": "^4.17.21"
 	},
 	"devDependencies": {

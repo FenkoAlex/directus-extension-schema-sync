@@ -21,7 +21,7 @@ export const logMessageTypes = {
 export function createLogMessage(type: string, message: string) {
   const time = new Date();
   return `${time.getHours()}:${time.getMinutes()}:${time.getSeconds()} ${type}: ${message}
-  `;
+`;
 }
 
 export function recordFromCollectionable<T extends Collectionable>(arr: T[]) {
