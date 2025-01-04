@@ -10,10 +10,15 @@ export const nav = {
     name: 'Collections transfer',
     url: root + '/collection-transfer',
   },
-  'universal-collection-transfer': {
-    id: 'universal-collection-transfer',
-    name: 'Universal collections transfer',
-    url: root + '/universal-collection-transfer',
+  'file-transfer': {
+    id: 'file-transfer',
+    name: 'File transfer',
+    url: root + '/file-transfer',
   },
+  // 'universal-collection-transfer': {
+  //   id: 'universal-collection-transfer',
+  //   name: 'Universal collections transfer',
+  //   url: root + '/universal-collection-transfer',
+  // },
 };
 export const CHANGED_ITEMS_ACTIVITIES = 'schema-export/changed-items-activities';

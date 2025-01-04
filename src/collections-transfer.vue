@@ -67,6 +67,7 @@ const collectionsRecord = ref<CollectionsRecord | null>(null);
 const activities = ref<ActivitiesMap>(new Map());
 const activitiesDeletedItems = ref<ActivitiesMap>(new Map());
 const activitiesCollectionSelections = ref<any[][]>([]);
+const activitiesWereLoaded = ref(false);
 
 const search = ref<string | null>(null);
 const collectionsSorted = computed(() => {
@@ -89,6 +90,27 @@ watch(selected, (collections) => {
     collectionForConfirm.value = collections;
   }
 });
+
+// this checkbox changes the export behavior: if we expand a collection, we want to export the collections deliberately, and we turn off ordered export
+const expandSelectedCollection = ref(false);
+function showCollectionForConfirm() {
+  if (!expandSelectedCollection.value) return collectionForConfirm.value;
+
+  const tmpCollections: Collection[] = [];
+  for (let item of collectionForConfirm.value) {
+    console.log(
+      collectionsRecord.value,
+      collectionsRecord.value[item.collection]
+    );
+    if (collectionsRecord.value?.[item.collection]) {
+      for (let element of collectionsRecord.value[item.collection]
+        ?.exportOrder || []) {
+        tmpCollections.push(collectionsRecord.value[element.collection]);
+      }
+    }
+  }
+  return tmpCollections;
+}
 
 const { uploadFile, exportData } = useExportImport();
 
@@ -116,6 +138,8 @@ async function checkExportDateCollection() {
 }
 async function loadActivities() {
   loading.value = true;
+  activities.value = new Map();
+  activitiesDeletedItems.value = new Map();
 
   const { getActivities } = useActivities(clientA.value);
   const getFilter =
@@ -141,15 +165,16 @@ async function loadActivities() {
 
   console.log("activities loading...");
   for (let j = 0; j < activitiesCollectionSelections.value.length; j++) {
-    activitiesDeletedItems.value = await getActivities(
-      getFilter(["delete"], j),
-      activitiesDeletedItems.value
-    );
     activities.value = await getActivities(
       getFilter(["create", "update", "delete"], j),
       activities.value
     );
+    activitiesDeletedItems.value = await getActivities(
+      getFilter(["delete"], j),
+      activitiesDeletedItems.value
+    );
   }
+  activitiesWereLoaded.value = true;
 
   console.log("activities detected: ", activities.value);
   console.log("deleted activities: ", activitiesDeletedItems.value);
@@ -184,7 +209,7 @@ async function requestInitData() {
     );
 
   let tmpCollectionSelections: any[] = [];
-  let collectionCount = 0;
+  console.log("remoteExportDateCollection", remoteExportDateCollection);
   // enrich data with last_sync_date and prepare collections for filter
   for (let element of remoteExportDateCollection) {
     if (element.last_sync_date) {
@@ -193,17 +218,9 @@ async function requestInitData() {
           ...collectionsRecord.value[element.id],
           last_sync_date: element.last_sync_date as unknown as string,
         };
-        // divide into groups
-        if (collectionCount >= COLLECTION_PER_REQUEST) {
-          activitiesCollectionSelections.value.push(tmpCollectionSelections);
-          tmpCollectionSelections = [];
-          collectionCount = 0;
-        }
-        collectionCount++;
       }
     }
   }
-  activitiesCollectionSelections.value.push(tmpCollectionSelections);
 
   // add last_sync_date to displaed items
   userCollections.value = userCollections.value.map((collection) => {
@@ -237,7 +254,15 @@ async function requestInitData() {
       });
     }
     tmpCollectionSelections.push(tmpFilter);
+    // divide into groups
+    if (tmpCollectionSelections.length >= COLLECTION_PER_REQUEST) {
+      activitiesCollectionSelections.value.push(tmpCollectionSelections);
+      tmpCollectionSelections = [];
+    }
   }
+
+  if (tmpCollectionSelections.length)
+    activitiesCollectionSelections.value.push(tmpCollectionSelections);
 
   loading.value = false;
   tableLoading.value = false;
@@ -287,9 +312,11 @@ const handleExportClick = ref(async () => {
   for (let item of selected.value) {
     console.log("---");
     console.log(`| Preparing "${item.collection}"...`, item);
+    const iterableCollections = expandSelectedCollection.value
+      ? [item]
+      : collectionsRecord.value?.[item.collection]?.exportOrder;
     // download data per collection from exportOrder
-    for (let element of collectionsRecord.value[item.collection].exportOrder ||
-      []) {
+    for (let element of iterableCollections || []) {
       let originData;
       try {
         originData = await exportData(element.collection);
@@ -327,37 +354,39 @@ const handleExportClick = ref(async () => {
       });
     }
     console.log("---");
-
-    // send data to receaving directus
-    for (let [collectionName, data] of dataMap.entries()) {
-      try {
-        console.log(`"${collectionName}" uploading...`);
-        await uploadItems(collectionName, data.secure);
-        console.log(`"${collectionName}" deleting...`);
-        await deleteItems(collectionName);
-        dateSyncJson.push({
-          id: collectionName,
-          data_update_date: date,
-          last_sync_date: date,
-        });
-      } catch (e) {
-        failedCollections.set(collectionName, false);
-        textLog.push(
-          createLogMessage(
-            logMessageTypes.error,
-            `${collectionName} load faild ${e?.errors?.[0]?.message}`
-          )
-        );
-      }
-    }
-
-    // print log
-    log.value = textLog.join("");
   }
+
+  // send data to receaving directus
+  for (let [collectionName, data] of dataMap.entries()) {
+    // dont transfer empty collection, if no data in collection directus throw error
+    if (!data.secure.length) continue;
+    try {
+      console.log(`"${collectionName}" uploading...`);
+      await uploadItems(collectionName, data.secure);
+      console.log(`"${collectionName}" deleting...`);
+      await deleteItems(collectionName);
+      dateSyncJson.push({
+        id: collectionName,
+        data_update_date: date,
+        last_sync_date: date,
+      });
+    } catch (e) {
+      failedCollections.set(collectionName, false);
+      textLog.push(
+        createLogMessage(
+          logMessageTypes.error,
+          `${collectionName} load faild ${e?.errors?.[0]?.message}`
+        )
+      );
+    }
+  }
+
+  // print log
+  log.value = textLog.join("");
 
   // Update sync date of all unchanged collections
   Object.keys(collectionsRecord.value).map((collectionName) => {
-    if (!activities.value.has(collectionName)) {
+    if (activitiesWereLoaded.value && !activities.value.has(collectionName)) {
       dateSyncJson.push({
         id: collectionName,
         last_sync_date: date,
@@ -365,12 +394,14 @@ const handleExportClick = ref(async () => {
     }
   });
 
-  console.log(`updating "${EXPORT_DATE_COLLECTOIN_NAME}"...`, dateSyncJson);
-  // update EXPORT_DATE_COLLECTOIN_NAME with new Dates
-  await uploadItems(
-    EXPORT_DATE_COLLECTOIN_NAME,
-    dateSyncJson as unknown as JSON
-  );
+  if (dateSyncJson.length) {
+    console.log(`updating "${EXPORT_DATE_COLLECTOIN_NAME}"...`, dateSyncJson);
+    // update EXPORT_DATE_COLLECTOIN_NAME with new Dates
+    await uploadItems(
+      EXPORT_DATE_COLLECTOIN_NAME,
+      dateSyncJson as unknown as JSON
+    );
+  }
   if (failedCollections.size === 0) {
     notificationsStore.add({
       type: "success",
@@ -379,14 +410,10 @@ const handleExportClick = ref(async () => {
     });
   }
 
-  // Update initial data
-  resetData();
   transferProcessing.value = false;
 });
 
 function resetData() {
-  activities.value = new Map();
-  activitiesDeletedItems.value = new Map();
   selected.value = [];
 }
 
@@ -424,7 +451,10 @@ function traversalExportTree(
 
 function selectCollection(item: Collection) {
   selected.value = uniqBy([...selected.value, item], "collection");
-  if (!collectionsRecord.value[item.collection]?.exportOrder) {
+  if (
+    collectionsRecord.value &&
+    !collectionsRecord.value?.[item.collection]?.exportOrder
+  ) {
     console.log("---");
     console.log(`| calculating export order for ${item.collection}...`);
     collectionsRecord.value[item.collection].exportOrder = traversalExportTree(
@@ -458,6 +488,12 @@ function handleTransferClick() {
 }
 function handleReturnToSelectionClick() {
   step.value = 0;
+}
+
+function handleLoadNewDataClick() {
+  // Update initial data
+  requestInitData();
+  resetData();
 }
 
 const handleApplySchemaClick = ref(async () => {
@@ -550,8 +586,16 @@ function checkChangedCollection(name: string) {
             :disabled="!selected.length"
             >Confirm Transfer</v-button
           >
+          <v-checkbox
+            v-if="step === 1"
+            v-model="expandSelectedCollection"
+            label="Expand selected collection"
+          />
         </div>
         <div class="mb controls" v-if="step === 0">
+          <v-button @click="handleLoadNewDataClick" :loading="loading"
+            >Reload data</v-button
+          >
           <v-button @click="loadActivities" :loading="loading"
             >Load activities</v-button
           >
@@ -581,7 +625,7 @@ function checkChangedCollection(name: string) {
             LAST_SYNC_HEADER,
             SHOW_CHANGED_ITEM_HEADER,
           ]"
-          :items="step === 0 ? collectionsSorted : collectionForConfirm"
+          :items="step === 0 ? collectionsSorted : showCollectionForConfirm()"
           :itemKey="'collection'"
           :modelValue="selected"
           :loading="tableLoading || transferProcessing"

@@ -72,5 +72,5 @@ export const ACTIVITIES_TABLE_HEADER = [
   { text: "Action By", value: "user" },
 ]
 
-export const COLLECTION_PER_REQUEST = 25;
+export const COLLECTION_PER_REQUEST = 50;
 export const ACTIVITIES_PER_REQUEST = 2000;

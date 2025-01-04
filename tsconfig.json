@@ -22,7 +22,9 @@
 		"forceConsistentCasingInFileNames": true,
 		"allowSyntheticDefaultImports": true,
 		"isolatedModules": true,
-		"rootDir": "./src"
+		"rootDir": "./src",
+    "jsx": "preserve",
+    "jsxImportSource": "vue"
 	},
 	"include": ["./src/**/*.ts"]
 }

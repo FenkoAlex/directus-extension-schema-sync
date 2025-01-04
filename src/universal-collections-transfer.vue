@@ -51,7 +51,7 @@ const fieldsMap = ref<any>(null);
 const relationsMap = ref<any>(null);
 
 // const search = ref<string | null>(null);
-const search = ref<string | null>("filter");
+const search = ref<string | null>("");
 const collectionsSorted = computed(() => {
   const normalizedSearch = search.value?.toLowerCase();
   const result = sortBy(

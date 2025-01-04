@@ -2,6 +2,7 @@ import { defineModule } from '@directus/extensions-sdk';
 import SchemaTransferComponent from './schema-transfer.vue';
 import ItemTransferComponent from './collections-transfer.vue';
 import UniversalItemTransferComponent from './universal-collections-transfer.vue';
+import FileTransferComponent from './file-transfer.vue';
 import ChangedItemActivities from './changed-items-activities.vue';
 import { CHANGED_ITEMS_ACTIVITIES } from './path';
 
@@ -24,6 +25,11 @@ export default defineModule({
 			id: 'schema-export/universal-collection-transfer',
 			path: 'universal-collection-transfer',
 			component: UniversalItemTransferComponent,
+		},
+		{
+			id: 'schema-export/file-transfer',
+			path: 'file-transfer',
+			component: FileTransferComponent,
 		},
 		{
 			id: CHANGED_ITEMS_ACTIVITIES,

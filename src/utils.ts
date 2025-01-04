@@ -34,6 +34,18 @@ export function recordFromCollectionable<T extends Collectionable>(arr: T[]) {
   }, {});
 }
 
+
+export function recordFromArrWithIds<T extends { id: string }>(arr: T[]) {
+  return arr.reduce<Record<string, T>>((acc, val) => {
+    acc[val.id] = {
+      ...val,
+    };
+
+    return acc;
+  }, {});
+}
+
+
 export function mapFromCollectionable<T extends Collectionable>(arr: T[]) {
   const result = new Map<string, T[]>();
 
@@ -127,3 +139,10 @@ export function extract(path: string) {
   const rootPath = parts.slice(0, adminIndex).join("/") + "/";
   return rootPath;
 }
+
+export const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
