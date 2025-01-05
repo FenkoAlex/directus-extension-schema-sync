@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, onUnmounted, watch } from "vue";
 import { useApi, useStores } from "@directus/extensions-sdk";
 import { debounce } from "lodash";
-import { readFiles, updateFile } from "@directus/sdk";
+import {
+  createFolder,
+  readFiles,
+  readFolders,
+  updateFile,
+  updateFolder,
+} from "@directus/sdk";
 import { format } from "date-fns";
 
+import FileStructure from "./components/FileStructure.vue";
 import { initDirectusClients } from "./init-directus-clients";
 import Nav from "./nav.vue";
 import { nav } from "./path";
-import { blobToBase64, getPublicURL } from "./utils";
+import { blobToBase64, getPublicURL, recordFromArrWithIds } from "./utils";
+import { Folder, FolderRaw } from "./types";
 
-const FILES_PER_PAGE = 50;
+const FILES_PER_PAGE = 20;
 const TABLE_HEADER = [
   { text: "ID", value: "id" },
   { text: "", value: "img", width: "300" },
@@ -20,9 +28,16 @@ const TABLE_HEADER = [
 ];
 
 type AssetFile = ReturnType<typeof readFiles> & {
-  fileBlob: Blob;
-  fileBase64: string;
+  id: string;
+  folder: string;
+  uploaded_on: string;
+  modified_on: string;
+  fileBlob?: Blob;
+  fileBase64?: string;
+  status?: "new" | "changed";
 };
+
+type FilesRecord = { [key: string]: AssetFile };
 
 const { useNotificationsStore } = useStores();
 const notificationsStore = useNotificationsStore();
@@ -34,17 +49,44 @@ const clientA = ref<any>(null);
 const clientB = ref<any>(null);
 
 const search = ref<string | null>(null);
-const files = ref({});
+const filterNewOrChanged = ref(false);
+const filesA = ref<FilesRecord>({});
+const filesB = ref<FilesRecord>({});
 const filesCount = ref(0);
+const currentPage = ref(1);
+const foldersA = ref<Folder[]>([]);
+const foldersRawA = ref<FolderRaw[]>([]);
+const foldersB = ref<Folder[]>([]);
+const foldersRawB = ref<FolderRaw[]>([]);
+const activeFolder = ref<null | string>(null);
+const sortedFiles = computed(() => {
+  if (Object.values(filesA.value).length === 0) return [];
+  let result = Object.values(filesA.value);
+
+  if (filterNewOrChanged.value) {
+    result = result.filter(
+      (item) => item.status === "new" || item.status === "changed"
+    );
+  }
+
+  if (!activeFolder.value) {
+    return result;
+  }
+
+  result = Object.values(result).filter(
+    (item) => item.folder === activeFolder.value
+  );
+
+  return result;
+});
 const paginationState = computed(() => {
   return {
-    length: Math.ceil(filesCount.value / FILES_PER_PAGE),
+    length: Math.ceil(sortedFiles.value.length / FILES_PER_PAGE),
     totalVisible: 10,
   };
 });
-const currentPage = ref(1);
 
-async function loadFile(file) {
+async function loadFile(file): Promise<AssetFile> {
   const fileBlob = await getAsset(file.id);
   const fileBase64 = fileBlob ? await blobToBase64(fileBlob) : undefined;
 
@@ -55,11 +97,10 @@ async function loadFile(file) {
   };
 }
 
-async function getFiles(searchStr: string = "") {
-  const files = await clientA.value.request(
+async function getFiles(client, searchStr: string = ""): Promise<FilesRecord> {
+  const files = await client.request(
     readFiles({
-      limit: FILES_PER_PAGE,
-      page: currentPage.value,
+      limit: -1,
       search: searchStr,
       fields: [
         "*",
@@ -72,9 +113,40 @@ async function getFiles(searchStr: string = "") {
       ],
     })
   );
-  const loadedAssets = await Promise.all(files.map((file) => loadFile(file)));
 
-  return loadedAssets;
+  return recordFromArrWithIds<AssetFile>(files);
+}
+
+async function getFolders(client) {
+  const foldersRaw = await client.request(readFolders());
+  return foldersRaw;
+}
+
+function nestFolders(rawFolders: FolderRaw[]): Folder[] {
+  return rawFolders
+    .map((rawFolder) => nestChildren(rawFolder, rawFolders))
+    .filter((folder) => folder.parent === null);
+}
+
+function nestChildren(rawFolder: FolderRaw, rawFolders: FolderRaw[]): Folder {
+  const folder: Folder = { ...rawFolder };
+
+  const children = rawFolders.reduce<FolderRaw[]>((acc, childFolder) => {
+    if (
+      childFolder.parent === rawFolder.id &&
+      childFolder.id !== rawFolder.id
+    ) {
+      acc.push(nestChildren(childFolder, rawFolders));
+    }
+
+    return acc;
+  }, []);
+
+  if (children.length > 0) {
+    folder.children = children;
+  }
+
+  return folder;
 }
 
 const init = async () => {
@@ -83,6 +155,14 @@ const init = async () => {
   clientB.value = client2;
   requestInitData();
 };
+async function fetchFoldersA() {
+  foldersRawA.value = await getFolders(clientA.value);
+  foldersA.value = nestFolders(foldersRawA.value);
+}
+async function fetchFoldersB() {
+  foldersRawB.value = await getFolders(clientB.value);
+  foldersB.value = nestFolders(foldersRawB.value);
+}
 async function requestInitData() {
   filesCount.value = (
     await clientA.value.request(
@@ -92,7 +172,30 @@ async function requestInitData() {
       })
     )
   )[0].countDistinct.id;
-  files.value = await getFiles();
+
+  const filesAResp = await getFiles(clientA.value);
+  const filesBResp = await getFiles(clientB.value);
+  for (let item of Object.values(filesAResp)) {
+    const rightItem = filesBResp[item.id];
+    if (rightItem) {
+      if (new Date(item.modified_on) > new Date(rightItem.modified_on)) {
+        filesAResp[item.id] = {
+          ...item,
+          status: "changed",
+        } as AssetFile;
+      }
+    } else {
+      filesAResp[item.id] = {
+        ...item,
+        status: "new",
+      } as AssetFile;
+    }
+  }
+  filesA.value = filesAResp;
+  filesB.value = filesBResp;
+
+  await fetchFoldersA();
+  await fetchFoldersB();
   loading.value = false;
 }
 onMounted(() => {
@@ -124,19 +227,15 @@ async function getAsset(id: string) {
     .catch((e) => console.log("Failed to load asset: ", e));
 }
 
-async function handlePaginationChange() {
-  loading.value = true;
-  files.value = await getFiles();
-  loading.value = false;
-}
-
 const handleSearchChange = debounce(async () => {
   loading.value = true;
-  files.value = await getFiles(search.value || "");
+  filesA.value = await getFiles(search.value || "");
   loading.value = false;
 }, 300);
 
 async function handleTransferFile() {
+  loading.value = true;
+  let error = false;
   for (let item of selected.value) {
     const file = new File([item.fileBlob], item.filename_download, {
       type: item.fileBlob.type,
@@ -163,20 +262,78 @@ async function handleTransferFile() {
 
     try {
       await clientB.value.request(updateFile(item.id, formData));
-      notificationsStore.add({
-        type: "success",
-        title: "Item successfully transferred",
-        dialog: true,
-      });
     } catch (e) {
+      error = true;
       notificationsStore.add({
         type: "error",
-        title: "Error duiring apply",
+        title: "Error duiring upload: " + item.name,
         text: e?.errors?.[0]?.message,
         dialog: true,
       });
     }
   }
+  if (!error) {
+    notificationsStore.add({
+      type: "success",
+      title: "Items successfully transferred",
+    });
+  }
+  await requestInitData();
+  loading.value = false;
+}
+
+function handleClick(id: string | null) {
+  activeFolder.value = id;
+  currentPage.value = 1;
+}
+
+function getFilesToShow() {
+  if (sortedFiles.value.length === 0) return [];
+  const startPosition =
+    currentPage.value === 1 ? 0 : (currentPage.value - 1) * FILES_PER_PAGE;
+
+  let tmpFiles = Object.values(sortedFiles.value).slice(
+    startPosition,
+    startPosition + FILES_PER_PAGE
+  );
+  for (let item of tmpFiles) {
+    if (item.fileBase64) continue;
+    filesA.value[item.id] = {
+      ...item,
+      fileBase64: "loading",
+    } as AssetFile;
+    loadFile(item).then((loadedFile) => {
+      filesA.value[loadedFile.id] = loadedFile;
+    });
+  }
+
+  return tmpFiles;
+}
+
+async function updateFolders(foldersA: Folder[], foldersB: Folder[]) {
+  const foldersBRecord = recordFromArrWithIds(foldersB);
+  for (let item of foldersA) {
+    const rightItem = foldersBRecord[item.id];
+    if (rightItem) {
+      // check if folder parent changed
+      if (item.parent !== rightItem.parent || item.name !== rightItem.name) {
+        await clientB.value.request(updateFolder(item.id, item));
+      }
+    } else {
+      await clientB.value.request(createFolder(item));
+    }
+
+    if (item.children) {
+      updateFolders(item.children, rightItem?.children || []);
+    }
+  }
+}
+
+async function handleSyncFoldersStructure() {
+  loading.value = true;
+  await updateFolders(foldersA.value, foldersB.value);
+  await fetchFoldersB();
+  loading.value = false;
 }
 </script>
 
@@ -186,90 +343,142 @@ async function handleTransferFile() {
       <Nav :activeItem="nav['file-transfer'].id" />
     </template>
     <div class="wrapper">
-      <div class="mb32 controls">
-        <v-input
-          v-model="search"
-          @update:modelValue="handleSearchChange"
-          class="searchInput"
-          type="search"
-          :placeholder="'Search files'"
-          :full-width="false"
+      <div>
+        <v-button
+          class="syncFoldersButton"
+          @click="handleSyncFoldersStructure"
+          :loading="loading"
         >
-          <template #prepend>
-            <v-icon name="search" outline />
+          Sync folders structure
+        </v-button>
+        <FileStructure
+          :folders="foldersA"
+          :onClick="handleClick"
+          :active-folder="activeFolder"
+        />
+      </div>
+      <div>
+        <div class="mb32 controls">
+          <v-input
+            v-model="search"
+            @update:modelValue="handleSearchChange"
+            class="searchInput"
+            type="search"
+            :placeholder="'Search files'"
+            :full-width="false"
+          >
+            <template #prepend>
+              <v-icon name="search" outline />
+            </template>
+            <template #append>
+              <v-icon
+                v-if="search"
+                clickable
+                class="clear"
+                name="close"
+                @click.stop="search = null"
+              />
+            </template>
+          </v-input>
+
+          <v-button
+            @click="handleTransferFile"
+            :loading="loading"
+            :disabled="!selected.length"
+          >
+            Transfer files
+          </v-button>
+        </div>
+        <div class="mb32 controls">
+          <v-checkbox
+            v-model="filterNewOrChanged"
+            label="Show only new or changed files"
+          />
+        </div>
+        <VTable
+          class="mb32"
+          :showSelect="'multiple'"
+          :headers="TABLE_HEADER"
+          :items="getFilesToShow()"
+          :itemKey="'id'"
+          v-model="selected"
+          :loading="loading"
+        >
+          <template #[`item.id`]="{ item }">
+            {{ console.log(item) }}
+            <p
+              :class="{
+                idCell: true,
+                new: item.status === 'new',
+                changed: item.status === 'changed',
+              }"
+            >
+              {{ item.id }}
+            </p>
           </template>
-          <template #append>
-            <v-icon
-              v-if="search"
-              clickable
-              class="clear"
-              name="close"
-              @click.stop="search = null"
+          <template #[`item.img`]="{ item }">
+            <img
+              class="impPreview"
+              v-if="item.fileBase64"
+              :src="item.fileBase64"
+              width="300"
+              height="200"
             />
           </template>
-        </v-input>
-
-        <v-button
-          @click="handleTransferFile"
-          :loading="loading"
-          :disabled="!selected.length"
-        >
-          Transfer files
-        </v-button>
+          <template #[`item.modified_on`]="{ item }">
+            <p
+              :class="{
+                new: item.status === 'new',
+                changed: item.status === 'changed',
+              }"
+            >
+              {{
+                format(
+                  item?.modified_on ?? item.uploaded_on,
+                  "dd.MM.yyyy HH:mm:ss"
+                )
+              }}
+            </p>
+          </template>
+          <template #[`item.modified_by`]="{ item }">
+            <a
+              v-if="item?.modified_by?.id"
+              class="link"
+              target="_blank"
+              :href="`users/${item?.modified_by?.id}`"
+            >
+              {{
+                `${item.modified_by.first_name} ${item.modified_by.last_name}`
+              }}
+            </a>
+            <a
+              v-if="item?.uploaded_by?.id"
+              class="link"
+              target="_blank"
+              :href="`users/${item.uploaded_by.id}`"
+            >
+              {{
+                `${item.uploaded_by.first_name} ${item.uploaded_by.last_name}`
+              }}
+            </a>
+          </template>
+        </VTable>
+        <v-pagination v-model="currentPage" v-bind="paginationState" />
       </div>
-      <VTable
-        class="mb32"
-        :showSelect="'multiple'"
-        :headers="TABLE_HEADER"
-        :items="Object.values(files)"
-        :itemKey="'id'"
-        v-model="selected"
-        :loading="loading"
-      >
-        <template #[`item.img`]="{ item }">
-          <img
-            class="impPreview"
-            v-if="item.fileBase64"
-            :src="item.fileBase64"
-            width="300"
-            height="200"
-          />
-        </template>
-        <template #[`item.modified_on`]="{ item }">
-          {{
-            format(item?.modified_on ?? item.uploaded_on, "dd.MM.yyyy HH:mm:ss")
-          }}
-        </template>
-        <template #[`item.modified_by`]="{ item }">
-          <a
-            v-if="item?.modified_by?.id"
-            class="link"
-            target="_blank"
-            :href="`users/${item?.modified_by?.id}`"
-          >
-            {{ `${item.modified_by.first_name} ${item.modified_by.last_name}` }}
-          </a>
-          <a
-            v-if="item?.uploaded_by?.id"
-            class="link"
-            target="_blank"
-            :href="`users/${item.uploaded_by.id}`"
-          >
-            {{ `${item.uploaded_by.first_name} ${item.uploaded_by.last_name}` }}
-          </a>
-        </template>
-      </VTable>
-      <v-pagination
-        v-model="currentPage"
-        v-bind="paginationState"
-        onchange="handlePaginationChange"
-        @update:modelValue="handlePaginationChange"
-      />
     </div>
   </private-view>
 </template>
 
 <style lang="scss" scoped>
+.idCell {
+  text-wrap: wrap;
+}
+.new {
+  color: var(--success);
+}
+.changed {
+  color: var(--warning);
+}
 .loaderWrapper {
   display: flex;
   justify-content: center;
@@ -278,6 +487,9 @@ async function handleTransferFile() {
 }
 .wrapper {
   margin: 24px 32px;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px;
 }
 
 .mb32 {
@@ -295,6 +507,11 @@ async function handleTransferFile() {
 
 .impPreview {
   object-fit: contain;
+}
+
+.syncFoldersButton {
+  width: 100%;
+  margin-bottom: 20px;
 }
 </style>
 

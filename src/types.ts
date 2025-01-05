@@ -50,3 +50,16 @@ export type ExportDateCollection = {
   data_update_date: Date;
   last_sync_date: Date;
 };
+
+export type FolderRaw = {
+  id: string;
+  name: string;
+  parent: string | null;
+};
+
+export type Folder = {
+  id: string;
+  name: string;
+  parent: string | null;
+  children?: Folder[];
+};
