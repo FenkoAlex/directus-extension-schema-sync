@@ -233,9 +233,43 @@ const handleSearchChange = debounce(async () => {
   loading.value = false;
 }, 300);
 
+async function createMissedFolders(files: AssetFile[]) {
+  const tmpFolders = [];
+  for (let item of files) {
+    const folderId = item.folder;
+    if (item.folder && !foldersB.value[folderId]) {
+      const chain = findFoldersChain(item.folder, foldersA.value);
+      await updateFolders(chain, foldersB.value);
+      await fetchFoldersB();
+    }
+  }
+}
+
+function findFoldersChain(
+  id: string,
+  folders: Folder[],
+  result: string[] = []
+) {
+  for (let item of folders) {
+    if (item.id === id)
+      return [...result, { id: item.id, name: item.name, parent: item.parent }];
+    if (item.children) {
+      const prevResult = findFoldersChain(id, item.children, [
+        ...result,
+        { id: item.id, name: item.name, parent: item.parent },
+      ]);
+      if (prevResult === null) continue;
+      else return prevResult;
+    }
+  }
+
+  return null;
+}
+
 async function handleTransferFile() {
   loading.value = true;
   let error = false;
+  await createMissedFolders(selected.value);
   for (let item of selected.value) {
     const file = new File([item.fileBlob], item.filename_download, {
       type: item.fileBlob.type,
@@ -285,6 +319,7 @@ async function handleTransferFile() {
 function handleClick(id: string | null) {
   activeFolder.value = id;
   currentPage.value = 1;
+  selected.value = [];
 }
 
 function getFilesToShow() {
@@ -405,7 +440,6 @@ async function handleSyncFoldersStructure() {
           :loading="loading"
         >
           <template #[`item.id`]="{ item }">
-            {{ console.log(item) }}
             <p
               :class="{
                 idCell: true,
@@ -512,11 +546,5 @@ async function handleSyncFoldersStructure() {
 .syncFoldersButton {
   width: 100%;
   margin-bottom: 20px;
-}
-</style>
-
-<style lang="scss">
-.table-row {
-  height: 200px !important;
 }
 </style>
