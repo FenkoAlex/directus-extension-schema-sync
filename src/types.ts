@@ -31,6 +31,7 @@ export type Collection = DirectusCollection & {
   };
   last_sync_date?: string;
   exportOrder: ExportElement[];
+  changed: boolean;
 };
 
 export type CollectionsRecord = Record<string, Collection>;

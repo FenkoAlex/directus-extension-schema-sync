@@ -72,12 +72,9 @@ async function getFiles(searchStr: string = "") {
       ],
     })
   );
-  const tmpFiles = {} as AssetFile;
-  for (let file of files) {
-    tmpFiles[file.id] = await loadFile(file);
-  }
+  const loadedAssets = await Promise.all(files.map((file) => loadFile(file)));
 
-  return tmpFiles;
+  return loadedAssets;
 }
 
 const init = async () => {

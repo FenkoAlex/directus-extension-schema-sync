@@ -9,7 +9,7 @@ import {
   readItems,
 } from "@directus/sdk";
 import { useStores } from "@directus/extensions-sdk";
-import { sortBy, uniqBy } from "lodash";
+import { sortBy, uniqBy, values } from "lodash";
 import { format } from "date-fns";
 
 import { initDirectusClients } from "./init-directus-clients";
@@ -136,6 +136,7 @@ async function checkExportDateCollection() {
     console.log(EXPORT_DATE_COLLECTOIN_NAME, " added");
   }
 }
+
 async function loadActivities() {
   loading.value = true;
   activities.value = new Map();
@@ -200,6 +201,12 @@ async function requestInitData() {
   schema.value = await useSchema(clientA.value, clientB.value);
   collectionsRecord.value = schema.value.collectionsRecord;
   console.log("collectionsRecord from schema:", collectionsRecord.value);
+
+  // calc export order
+  console.log("calculating export order...");
+  for (let item of Object.values(collectionsRecord.value)) {
+    item.meta.export_schema?.export && calcExportOrder(item);
+  }
 
   const remoteExportDateCollection: ExportDateCollection[] =
     await clientB.value.request(
@@ -449,25 +456,31 @@ function traversalExportTree(
   return order;
 }
 
-function selectCollection(item: Collection) {
-  selected.value = uniqBy([...selected.value, item], "collection");
+function calcExportOrder(item: Collection) {
   if (
     collectionsRecord.value &&
-    !collectionsRecord.value?.[item.collection]?.exportOrder
+    collectionsRecord.value?.[item.collection]?.exportOrder
   ) {
-    console.log("---");
-    console.log(`| calculating export order for ${item.collection}...`);
-    collectionsRecord.value[item.collection].exportOrder = traversalExportTree(
-      item.collection,
-      item.meta.export_schema!
-    );
-    console.log("| schema: ", item.meta.export_schema);
-    console.log(
-      "| order: ",
-      collectionsRecord.value[item.collection].exportOrder
-    );
-    console.log("---");
+    return;
   }
+
+  console.log("---");
+  console.log(`| calculating export order for ${item.collection}...`);
+  const exportOrder = traversalExportTree(
+    item.collection,
+    item.meta.export_schema!
+  );
+  collectionsRecord.value[item.collection].exportOrder = exportOrder;
+  console.log("| schema: ", item.meta.export_schema);
+  console.log(
+    "| order: ",
+    collectionsRecord.value?.[item.collection].exportOrder
+  );
+  console.log("---");
+}
+
+function selectCollection(item: Collection) {
+  selected.value = uniqBy([...selected.value, item], "collection");
 }
 
 function handleItemSelect(event: { value: boolean; item: Collection }) {
@@ -522,17 +535,36 @@ const handleApplySchemaClick = ref(async () => {
 });
 
 function handleSelectChangedCollectionsClick() {
-  for (let collectionName of activities.value?.keys() || []) {
-    const collection = collectionsRecord.value[collectionName] as Collection;
-    if (collection && collection.meta.export_schema?.export) {
-      selectCollection(collection);
+  for (let item of Object.values(collectionsRecord.value)) {
+    if (item && item.meta.export_schema?.export && item.changed) {
+      selectCollection(item);
     }
   }
 }
 
 function checkChangedCollection(name: string) {
   const collection = collectionsRecord.value?.[name] as Collection;
-  return activities.value.has(name) && collection;
+  return collection.changed;
+}
+
+function updateCollectionsRecordWithActivities() {
+  for (let collection of Object.values(collectionsRecord.value)) {
+    if (!collection.meta.export_schema?.export) continue;
+    let collectionWasChanged = false;
+    for (let item of collection.exportOrder) {
+      if (activities.value.has(item.collection)) {
+        collectionWasChanged = true;
+        collectionsRecord.value[item.collection].changed = true;
+      }
+    }
+    collectionsRecord.value[collection.collection].changed =
+      collectionWasChanged;
+  }
+}
+
+async function handleActivitiesLoad() {
+  await loadActivities();
+  updateCollectionsRecordWithActivities();
 }
 </script>
 
@@ -596,7 +628,7 @@ function checkChangedCollection(name: string) {
           <v-button @click="handleLoadNewDataClick" :loading="loading"
             >Reload data</v-button
           >
-          <v-button @click="loadActivities" :loading="loading"
+          <v-button @click="handleActivitiesLoad" :loading="loading"
             >Load activities</v-button
           >
           <v-button
