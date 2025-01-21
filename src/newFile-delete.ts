@@ -1,5 +1,5 @@
 import { onMounted } from "vue";
-import { initDirectusClients } from "./init-directus-clients";
+import { initDirectusClients } from "./hooks/useDirectusClients";
 import { ACTIVITIES_PER_REQUEST } from "./const";
 import { readActivities } from "@directus/sdk";
 import { clientA, searchParams } from "./changed-items-activities.vue";

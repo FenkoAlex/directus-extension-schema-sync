@@ -12,12 +12,15 @@ import { useStores } from "@directus/extensions-sdk";
 import { sortBy, uniqBy, values } from "lodash";
 import { format } from "date-fns";
 
-import { initDirectusClients } from "./init-directus-clients";
-import { nav } from "./path";
-import Nav from "./nav.vue";
-import { useExportImport } from "./useExportImport";
-import { useSchema } from "./useSchema";
-import { useActivities } from "./useActivities";
+import {
+  useDirectusClients,
+  useExportImport,
+  useSchema,
+  useActivities,
+} from "../hooks";
+import { nav } from "../path";
+import Nav from "../components/nav.vue";
+import DirectusClientSwitch from "../components/DirectusClientSwitch.vue";
 import {
   splitCollections,
   removeFields,
@@ -25,7 +28,7 @@ import {
   createLogMessage,
   logMessageTypes,
   getPublicURL,
-} from "./utils";
+} from "../utils";
 import {
   COLLECTION_HEADER,
   EXPORT_DATE_COLLECTOIN_NAME,
@@ -34,8 +37,8 @@ import {
   SHOW_CHANGED_ITEM_HEADER,
   COLLECTION_PER_REQUEST,
   ACTIVITIES_PER_REQUEST,
-} from "./const";
-import { CHANGED_ITEMS_ACTIVITIES } from "./path";
+} from "../const";
+import { CHANGED_ITEMS_ACTIVITIES } from "../path";
 
 import type {
   Collection,
@@ -45,7 +48,7 @@ import type {
   ExportElement,
   ExportDateCollection,
   CollectionsRecord,
-} from "./types";
+} from "../types";
 
 const { useNotificationsStore } = useStores();
 const notificationsStore = useNotificationsStore();
@@ -55,8 +58,7 @@ const transferProcessing = ref(false);
 const tableLoading = ref(true);
 const log = ref("");
 const step = ref(0);
-const clientA = ref<any>(null);
-const clientB = ref<any>(null);
+const clientsData = ref<DirectusClients | null>(null);
 const userCollections = ref<Collection[]>([]);
 const systemCollections = ref<Collection[]>([]);
 
@@ -115,22 +117,20 @@ function showCollectionForConfirm() {
 const { uploadFile, exportData } = useExportImport();
 
 const init = async () => {
-  const [client1, client2] = await initDirectusClients();
-  clientA.value = client1;
-  clientB.value = client2;
+  clientsData.value = await useDirectusClients();
   await checkExportDateCollection();
   await requestInitData();
 };
 
 async function checkExportDateCollection() {
   try {
-    const exportDateCollection = await clientB.value.request(
+    const exportDateCollection = await clientsData.value.clientB.request(
       readCollection(EXPORT_DATE_COLLECTOIN_NAME)
     );
   } catch (e) {
     console.log("extention did`t find ", EXPORT_DATE_COLLECTOIN_NAME);
     console.log("creating...");
-    await clientB.value.request(
+    await clientsData.value.clientB.request(
       createCollection(EXPORT_DATE_COLLECTOIN_PARAMS)
     );
     console.log(EXPORT_DATE_COLLECTOIN_NAME, " added");
@@ -142,7 +142,7 @@ async function loadActivities() {
   activities.value = new Map();
   activitiesDeletedItems.value = new Map();
 
-  const { getActivities } = useActivities(clientA.value);
+  const { getActivities } = useActivities(clientsData.value.clientA);
   const getFilter =
     (actions: string[], part: number = 0) =>
     (page: number = 1) => {
@@ -190,7 +190,9 @@ async function requestInitData() {
   console.log("=== initial data loading ===");
   // getting collections from current Directus Client
   console.log("loading current Directus collections...");
-  const rawCollections = await clientA.value.request(readCollections());
+  const rawCollections = await clientsData.value.clientA.request(
+    readCollections()
+  );
   const collections = splitCollections(rawCollections);
   userCollections.value = collections.userCollections;
   console.log("current Directus userCollections: ", userCollections.value);
@@ -198,7 +200,10 @@ async function requestInitData() {
 
   // getting schema and sort it to collections, fields and relations
   console.log("parsing current schema...");
-  schema.value = await useSchema(clientA.value, clientB.value);
+  schema.value = await useSchema(
+    clientsData.value.clientA,
+    clientsData.value.clientB
+  );
   collectionsRecord.value = schema.value.collectionsRecord;
   console.log("collectionsRecord from schema:", collectionsRecord.value);
 
@@ -209,7 +214,7 @@ async function requestInitData() {
   }
 
   const remoteExportDateCollection: ExportDateCollection[] =
-    await clientB.value.request(
+    await clientsData.value.clientB.request(
       readItems<any, any, any>(EXPORT_DATE_COLLECTOIN_NAME, {
         limit: -1,
       })
@@ -280,7 +285,7 @@ onMounted(() => {
 
 async function uploadItems(collectionName: string, data: JSON) {
   const file = createJsonFile(data, collectionName);
-  await uploadFile(collectionName, file, clientB.value);
+  await uploadFile(collectionName, file, clientsData.value.clientB);
 }
 
 async function deleteItems(collectionName: string) {
@@ -303,7 +308,9 @@ async function deleteItems(collectionName: string) {
   console.log(`"${collectionName}" items to delete:`, arrToDelete);
 
   //@ts-ignore
-  await clientB.value.request(deleteItemsSdk(collectionName, arrToDelete));
+  await clientsData.value.clientB.request(
+    deleteItemsSdk(collectionName, arrToDelete)
+  );
 }
 
 const handleExportClick = ref(async () => {
@@ -566,6 +573,10 @@ async function handleActivitiesLoad() {
   await loadActivities();
   updateCollectionsRecordWithActivities();
 }
+
+function handleClientChange(clientId: string) {
+  requestInitData();
+}
 </script>
 
 <template>
@@ -573,6 +584,11 @@ async function handleActivitiesLoad() {
     <template v-slot:navigation>
       <Nav :activeItem="nav['collection-transfer'].id" />
     </template>
+    <DirectusClientSwitch
+      v-if="clientsData"
+      v-bind="clientsData"
+      @client-change="handleClientChange"
+    />
     <div class="wrapper">
       <div>
         <div class="mb controls">
@@ -601,14 +617,14 @@ async function handleActivitiesLoad() {
           <v-button
             @click="handleReturnToSelectionClick"
             v-if="step === 1"
-            :loading="loading"
+            :loading="loading || clientsData.loading"
             >Return to selection</v-button
           >
           <v-button
             @click="handleTransferClick"
             v-if="step === 0"
             :disabled="!selected.length"
-            :loading="loading"
+            :loading="loading || clientsData.loading"
             >Transfer collections</v-button
           >
           <v-button
@@ -625,10 +641,14 @@ async function handleActivitiesLoad() {
           />
         </div>
         <div class="mb controls" v-if="step === 0">
-          <v-button @click="handleLoadNewDataClick" :loading="loading"
+          <v-button
+            @click="handleLoadNewDataClick"
+            :loading="loading || clientsData.loading"
             >Reload data</v-button
           >
-          <v-button @click="handleActivitiesLoad" :loading="loading"
+          <v-button
+            @click="handleActivitiesLoad"
+            :loading="loading || clientsData.loading"
             >Load activities</v-button
           >
           <v-button
@@ -638,7 +658,7 @@ async function handleActivitiesLoad() {
           >
           <v-button
             @click="handleSelectChangedCollectionsClick"
-            :loading="loading"
+            :loading="loading || clientsData.loading"
           >
             Select changed collections
           </v-button>
@@ -660,7 +680,7 @@ async function handleActivitiesLoad() {
           :items="step === 0 ? collectionsSorted : showCollectionForConfirm()"
           :itemKey="'collection'"
           :modelValue="selected"
-          :loading="tableLoading || transferProcessing"
+          :loading="tableLoading || transferProcessing || clientsData.loading"
           @item-selected="handleItemSelect"
           @update:modelValue="updateModelValue"
         >

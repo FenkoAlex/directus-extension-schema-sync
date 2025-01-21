@@ -3,14 +3,14 @@ import { ref, onMounted } from "vue";
 import { useStores } from "@directus/extensions-sdk";
 import { uniqBy } from "lodash";
 
-import { COLLECTION_HEADER, COLLECTION_TO_EXCLUDE_FROM_SCHEMA } from "./const";
-import { initDirectusClients } from "./init-directus-clients";
-import Nav from "./nav.vue";
-import { nav } from "./path";
-import { mapFromCollectionable, recordFromCollectionable } from "./utils";
-import { useSchema } from "./useSchema";
+import { COLLECTION_HEADER, COLLECTION_TO_EXCLUDE_FROM_SCHEMA } from "../const";
+import Nav from "../components/nav.vue";
+import DirectusClientSwitch from "../components/DirectusClientSwitch.vue";
+import { nav } from "../path";
+import { mapFromCollectionable, recordFromCollectionable } from "../utils";
+import { useSchema, useDirectusClients } from "../hooks";
 
-import type { Collection, Collectionable } from "./types";
+import type { Collection, Collectionable } from "../types";
 
 const { useNotificationsStore } = useStores();
 const notificationsStore = useNotificationsStore();
@@ -20,20 +20,20 @@ const schema = ref<Awaited<ReturnType<typeof useSchema>> | null>(null);
 const relationsMap = ref<any>(null);
 const changedCollections = ref<any>(null);
 const selected = ref<Collection[]>([]);
-const clientA = ref<any>(null);
-const clientB = ref<any>(null);
+const clientsData = ref<DirectusClients | null>(null);
 
 const init = async () => {
-  const [client1, client2] = await initDirectusClients();
-  clientA.value = client1;
-  clientB.value = client2;
+  clientsData.value = await useDirectusClients();
   requestInitData();
 };
 async function requestInitData() {
   loading.value = true;
 
   // getting schema and sort it to collections, fields and relations
-  schema.value = await useSchema(clientA.value, clientB.value);
+  schema.value = await useSchema(
+    clientsData.value.clientA,
+    clientsData.value.clientB
+  );
   relationsMap.value = schema.value.relationsMap;
   console.log("relationsMap:", relationsMap.value);
   const accChengedCollection = uniqBy(
@@ -138,6 +138,10 @@ async function handleApplyWholeClick() {
     });
   }
 }
+
+function handleClientChange(clientId: string) {
+  requestInitData();
+}
 </script>
 
 <template>
@@ -145,6 +149,11 @@ async function handleApplyWholeClick() {
     <template v-slot:navigation>
       <Nav :activeItem="nav.main.id" />
     </template>
+    <DirectusClientSwitch
+      v-if="clientsData"
+      v-bind="clientsData"
+      @client-change="handleClientChange"
+    />
     <div class="wrapper">
       <div class="controls mb32">
         <v-button
@@ -154,11 +163,15 @@ async function handleApplyWholeClick() {
           Apply selected diff
         </v-button>
 
-        <v-button @click="handleApplyWholeClick" :disabled="!schema?.canApply">
+        <v-button
+          @click="handleApplyWholeClick"
+          :disabled="!schema?.canApply"
+          :loading="clientsData.loading"
+        >
           Apply whole diff
         </v-button>
       </div>
-      <div class="loaderWrapper" v-if="loading">
+      <div class="loaderWrapper" v-if="loading || clientsData.loading">
         <v-progress-circular class="loader" indeterminate />
       </div>
       <div v-else>
@@ -168,7 +181,7 @@ async function handleApplyWholeClick() {
           :headers="COLLECTION_HEADER"
           :items="changedCollections"
           :itemKey="'collection'"
-          :loading="loading"
+          :loading="loading || clientsData.loading"
           v-model="selected"
         ></VTable>
         <interface-input-code

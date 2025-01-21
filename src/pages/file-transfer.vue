@@ -11,12 +11,13 @@ import {
 } from "@directus/sdk";
 import { format } from "date-fns";
 
-import FileStructure from "./components/FileStructure.vue";
-import { initDirectusClients } from "./init-directus-clients";
-import Nav from "./nav.vue";
-import { nav } from "./path";
-import { blobToBase64, getPublicURL, recordFromArrWithIds } from "./utils";
-import { Folder, FolderRaw } from "./types";
+import FileStructure from "../components/FileStructure.vue";
+import { useDirectusClients } from "../hooks/useDirectusClients";
+import Nav from "../components/nav.vue";
+import DirectusClientSwitch from "../components/DirectusClientSwitch.vue";
+import { nav } from "../path";
+import { blobToBase64, getPublicURL, recordFromArrWithIds } from "../utils";
+import { Folder, FolderRaw } from "../types";
 
 const FILES_PER_PAGE = 20;
 const TABLE_HEADER = [
@@ -45,8 +46,7 @@ const notificationsStore = useNotificationsStore();
 const api = useApi();
 const loading = ref(true);
 const selected = ref([] as AssetFile[]);
-const clientA = ref<any>(null);
-const clientB = ref<any>(null);
+const clientsData = ref<DirectusClients | null>(null);
 
 const search = ref<string | null>(null);
 const filterNewOrChanged = ref(false);
@@ -150,22 +150,22 @@ function nestChildren(rawFolder: FolderRaw, rawFolders: FolderRaw[]): Folder {
 }
 
 const init = async () => {
-  const [client1, client2] = await initDirectusClients();
-  clientA.value = client1;
-  clientB.value = client2;
+  clientsData.value = await useDirectusClients();
   requestInitData();
 };
+
 async function fetchFoldersA() {
-  foldersRawA.value = await getFolders(clientA.value);
+  foldersRawA.value = await getFolders(clientsData.value.clientA);
   foldersA.value = nestFolders(foldersRawA.value);
 }
+
 async function fetchFoldersB() {
-  foldersRawB.value = await getFolders(clientB.value);
+  foldersRawB.value = await getFolders(clientsData.value.clientB);
   foldersB.value = nestFolders(foldersRawB.value);
 }
 async function requestInitData() {
   filesCount.value = (
-    await clientA.value.request(
+    await clientsData.value.clientA.request(
       readFiles({
         //@ts-ignore
         aggregate: { countDistinct: "id" },
@@ -173,8 +173,8 @@ async function requestInitData() {
     )
   )[0].countDistinct.id;
 
-  const filesAResp = await getFiles(clientA.value);
-  const filesBResp = await getFiles(clientB.value);
+  const filesAResp = await getFiles(clientsData.value.clientA);
+  const filesBResp = await getFiles(clientsData.value.clientB);
   for (let item of Object.values(filesAResp)) {
     const rightItem = filesBResp[item.id];
     if (rightItem) {
@@ -295,7 +295,7 @@ async function handleTransferFile() {
     }
 
     try {
-      await clientB.value.request(updateFile(item.id, formData));
+      await clientsData.value.clientB.request(updateFile(item.id, formData));
     } catch (e) {
       error = true;
       notificationsStore.add({
@@ -352,10 +352,10 @@ async function updateFolders(foldersA: Folder[], foldersB: Folder[]) {
     if (rightItem) {
       // check if folder parent changed
       if (item.parent !== rightItem.parent || item.name !== rightItem.name) {
-        await clientB.value.request(updateFolder(item.id, item));
+        await clientsData.value.clientB.request(updateFolder(item.id, item));
       }
     } else {
-      await clientB.value.request(createFolder(item));
+      await clientsData.value.clientB.request(createFolder(item));
     }
 
     if (item.children) {
@@ -370,6 +370,9 @@ async function handleSyncFoldersStructure() {
   await fetchFoldersB();
   loading.value = false;
 }
+function handleClientChange(clientId: string) {
+  requestInitData();
+}
 </script>
 
 <template>
@@ -377,12 +380,17 @@ async function handleSyncFoldersStructure() {
     <template v-slot:navigation>
       <Nav :activeItem="nav['file-transfer'].id" />
     </template>
+    <DirectusClientSwitch
+      v-if="clientsData"
+      v-bind="clientsData"
+      @client-change="handleClientChange"
+    />
     <div class="wrapper">
       <div>
         <v-button
           class="syncFoldersButton"
           @click="handleSyncFoldersStructure"
-          :loading="loading"
+          :loading="loading || clientsData.loading"
         >
           Sync folders structure
         </v-button>
@@ -418,7 +426,7 @@ async function handleSyncFoldersStructure() {
 
           <v-button
             @click="handleTransferFile"
-            :loading="loading"
+            :loading="loading || clientsData.loading"
             :disabled="!selected.length"
           >
             Transfer files
@@ -437,7 +445,7 @@ async function handleSyncFoldersStructure() {
           :items="getFilesToShow()"
           :itemKey="'id'"
           v-model="selected"
-          :loading="loading"
+          :loading="loading || clientsData.loading"
         >
           <template #[`item.id`]="{ item }">
             <p

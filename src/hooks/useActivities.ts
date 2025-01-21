@@ -1,6 +1,6 @@
 import { readActivities } from "@directus/sdk";
-import type { ActivitiesMap, Activity, Collectionable, DirectusClient } from "./types";
-import { ACTIVITIES_PER_REQUEST } from "./const";
+import type { ActivitiesMap, Activity, Collectionable, DirectusClient } from "../types";
+import { ACTIVITIES_PER_REQUEST } from "../const";
 
 export type FilterFn = (i?: number) => any
 

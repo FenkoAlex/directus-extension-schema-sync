@@ -1,10 +1,10 @@
 import { cloneDeep } from "lodash";
 import { SchemaDiffOutput, SchemaSnapshotOutput, schemaApply, schemaDiff, schemaSnapshot } from "@directus/sdk";
 
-import { mapFromCollectionable, recordFromCollectionable } from "./utils";
-import { COLLECTION_TO_EXCLUDE_FROM_SCHEMA } from "./const";
+import { mapFromCollectionable, recordFromCollectionable } from "../utils";
+import { COLLECTION_TO_EXCLUDE_FROM_SCHEMA } from "../const";
 
-import type { Collection, Collectionable, DirectusClient } from "./types";
+import type { Collection, Collectionable, DirectusClient } from "../types";
 
 export const useSchema = async (clientA: DirectusClient, clientB: DirectusClient) => {
   // getting current Directus snapshot

@@ -1,15 +1,13 @@
 import { ref } from "vue";
-import { useStores, useApi } from "@directus/extensions-sdk";
+import { useApi } from "@directus/extensions-sdk";
 import { getEndpoint } from "@directus/utils";
-import { getPublicURL } from "./utils";
-import { utilsImport, updateCollection } from "@directus/sdk";
+import { getPublicURL } from "../utils";
+import { utilsImport } from "@directus/sdk";
 
 export const useExportImport = () => {
   const api = useApi();
   const uploading = ref(false);
   const importing = ref(false);
-  const { useNotificationsStore } = useStores();
-  const notificationsStore = useNotificationsStore();
 
   const exportData = async (collectionName: string) => {
     const endpoint = getEndpoint(collectionName);

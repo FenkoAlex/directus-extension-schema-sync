@@ -13,10 +13,9 @@ import {
 import { useStores } from "@directus/extensions-sdk";
 import { clone, cloneDeep, sortBy, uniqBy } from "lodash";
 
-import { initDirectusClients } from "./init-directus-clients";
-import { nav } from "./path";
-import Nav from "./nav.vue";
-import { useExportImport } from "./useExportImport";
+import { useDirectusClients, useExportImport } from "../hooks";
+import { nav } from "../path";
+import Nav from "../components/nav.vue";
 import {
   splitCollections,
   recordFromCollectionable,
@@ -26,10 +25,10 @@ import {
   createJsonFile,
   createLogMessage,
   logMessageTypes,
-} from "./utils";
-import { COLLECTION_HEADER } from "./const";
+} from "../utils";
+import { COLLECTION_HEADER } from "../const";
 
-import type { Collection } from "./types";
+import type { Collection } from "../types";
 
 const { useNotificationsStore } = useStores();
 const notificationsStore = useNotificationsStore();
@@ -80,7 +79,7 @@ watch(selected, (collections) => {
 const { uploading, importing, uploadFile, exportData } = useExportImport();
 
 const init = async () => {
-  const [client1, client2] = await initDirectusClients();
+  const [client1, client2] = await useDirectusClients();
   clientA.value = client1;
   clientB.value = client2;
 

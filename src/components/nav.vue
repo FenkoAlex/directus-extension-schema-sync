@@ -1,7 +1,7 @@
 <script setup lang="ts">
-  import { nav } from './path';
+import { nav } from "../path";
 
-  const props = defineProps(['activeItem']);
+const props = defineProps(["activeItem"]);
 </script>
 
 <template>
@@ -11,9 +11,9 @@
       :active="item.id === props.activeItem"
       :nav="true"
       :to="item.url"
-    >{{ item.name }}</v-list-item>
+      >{{ item.name }}</v-list-item
+    >
   </v-list>
 </template>
 
-<style lang="scss" scoped>
-</style>
+<style lang="scss" scoped></style>

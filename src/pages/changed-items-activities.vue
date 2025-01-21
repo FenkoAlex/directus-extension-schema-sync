@@ -2,25 +2,24 @@
 import { ref, onMounted } from "vue";
 import { format } from "date-fns";
 
-import { initDirectusClients } from "./init-directus-clients";
-import Nav from "./nav.vue";
+import { useDirectusClients, useActivities } from "../hooks";
+import DirectusClientSwitch from "../components/DirectusClientSwitch.vue";
+import Nav from "../components/nav.vue";
 
-import { ACTIVITIES_PER_REQUEST, ACTIVITIES_TABLE_HEADER } from "./const";
-import { useActivities } from "./useActivities";
+import { ACTIVITIES_PER_REQUEST, ACTIVITIES_TABLE_HEADER } from "../const";
 
-import type { ActivitiesMap, Collectionable, Activity } from "./types";
+import type { ActivitiesMap, Collectionable, Activity } from "../types";
 
 const loading = ref(true);
 const searchParams = ref(new URLSearchParams(window.location.search));
-const clientA = ref<any>(null);
+const clientsData = ref<DirectusClients | null>(null);
 const rawActivities = ref<ActivitiesMap>(new Map());
 const activities = ref<Collectionable[]>([]);
 const collectionName = ref(searchParams.value.get("collection") || "");
 const date = ref(searchParams.value.get("date") || "");
 
 onMounted(async () => {
-  const [client1] = await initDirectusClients();
-  clientA.value = client1;
+  clientsData.value = await useDirectusClients();
   const getFilter = (page: number = 1) => {
     const filter = {
       limit: ACTIVITIES_PER_REQUEST,
@@ -60,7 +59,7 @@ onMounted(async () => {
 
     return filter;
   };
-  const { getActivities } = useActivities(clientA.value);
+  const { getActivities } = useActivities(clientsData.value.clientA);
   console.log(date.value);
   rawActivities.value = await getActivities(getFilter, rawActivities.value);
   if (rawActivities.value.has(collectionName.value)) {
