@@ -15,10 +15,5 @@ export const nav = {
     name: 'File transfer',
     url: root + '/file-transfer',
   },
-  // 'universal-collection-transfer': {
-  //   id: 'universal-collection-transfer',
-  //   name: 'Universal collections transfer',
-  //   url: root + '/universal-collection-transfer',
-  // },
 };
 export const CHANGED_ITEMS_ACTIVITIES = 'schema-export/changed-items-activities';

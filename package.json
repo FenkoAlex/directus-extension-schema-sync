@@ -1,8 +1,8 @@
 {
-	"name": "@farawaygg/directus-extension-schema-export",
-	"description": "export schema to other directus env",
+	"name": "directus-schema-sync",
+	"description": "Sync directus schema between environments",
 	"icon": "extension",
-	"version": "1.0.3",
+	"version": "1.0.1",
 	"keywords": [
 		"directus",
 		"directus-extension",
